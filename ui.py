@@ -23,7 +23,7 @@ st.caption(
     "or compare up to 3 companies side by side."
 )
 
-main_tab, compare_tab = st.tabs(["🔍 Analyze", "📊 Compare"])
+main_tab, compare_tab, history_tab = st.tabs(["🔍 Analyze", "📊 Compare", "📜 History"])
 
 
 # ── shared helper ─────────────────────────────────────────────────────────────
@@ -297,3 +297,73 @@ with compare_tab:
             st.markdown("")
             st.download_button("⬇ Download comparison (JSON)", json.dumps(cr, indent=2),
                                "tc_comparison.json", "application/json")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 3 — HISTORY
+# ═══════════════════════════════════════════════════════════════════════════════
+INPUT_ICON = {"url": "🔗", "pdf": "📄", "text": "📝"}
+
+with history_tab:
+    st.markdown("### Analysis history")
+    st.caption("Every document analyzed in this session is recorded here automatically.")
+
+    try:
+        entries = httpx.get(f"{API_BASE}/history", timeout=5).json()
+    except Exception:
+        st.error("Cannot reach the API. Run: `uvicorn api:app --reload --port 8002`")
+        entries = []
+
+    if not entries:
+        st.info("No analyses recorded yet. Run an analysis on the Analyze tab.")
+    else:
+        # summary metrics
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Total analyzed", len(entries))
+        m2.metric("🔴 High risk",   sum(1 for e in entries if e["overall_risk"] == "red"))
+        m3.metric("🟡 Moderate",    sum(1 for e in entries if e["overall_risk"] == "yellow"))
+        m4.metric("🟢 User-friendly", sum(1 for e in entries if e["overall_risk"] == "green"))
+
+        st.markdown("---")
+
+        for entry in entries:
+            risk       = entry["overall_risk"]
+            icon       = INPUT_ICON.get(entry["input_type"], "📄")
+            risk_icon  = RISK_COLOR[risk]
+            counts     = entry["counts"]
+            ts         = entry["timestamp"][:16].replace("T", "  ")
+
+            header = f"{risk_icon} {icon} {entry['input_label']}"
+
+            with st.expander(header, expanded=False):
+                col_meta, col_counts = st.columns([3, 2])
+
+                with col_meta:
+                    st.markdown(
+                        f"""<div style="background:{OVERALL_BG[risk]};
+                        border-left:4px solid {OVERALL_BORDER[risk]};
+                        padding:10px 14px;border-radius:5px;">
+                        <strong>{risk_icon} {RISK_LABEL[risk]}</strong><br/>
+                        <span style="font-size:0.97em">{entry['tldr']}</span>
+                        </div>""",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(f"🕐 {ts} UTC  ·  source: {entry['source']}")
+
+                with col_counts:
+                    st.markdown("**Clause breakdown**")
+                    st.markdown(
+                        f"🔴 Rights given up: **{counts['rights_given_up']}**  \n"
+                        f"🟡 Obligations: **{counts['obligations']}**  \n"
+                        f"🟢 Benefits: **{counts['benefits']}**  \n"
+                        f"⚠️ Unusual: **{counts['unusual_clauses']}**"
+                    )
+
+                if st.button("🗑 Remove", key=f"del_{entry['id']}"):
+                    httpx.delete(f"{API_BASE}/history/{entry['id']}", timeout=5)
+                    st.rerun()
+
+        st.markdown("---")
+        if st.button("🗑 Clear all history", type="secondary"):
+            httpx.delete(f"{API_BASE}/history", timeout=5)
+            st.rerun()

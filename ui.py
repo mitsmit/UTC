@@ -1,218 +1,412 @@
-"""Streamlit UI. Run with: streamlit run ui.py"""
+"""Streamlit UI — TermLens. Run with: streamlit run ui.py"""
 
 import json
+import time
+import threading
 
 import httpx
 import streamlit as st
 
 API_BASE = "http://localhost:8002"
 
-
-RISK_COLOR  = {"red": "🔴", "yellow": "🟡", "green": "🟢"}
-RISK_LABEL  = {"red": "High risk", "yellow": "Moderate", "green": "User-friendly"}
-OVERALL_BG  = {"red": "#fdecea", "yellow": "#fff8e1", "green": "#e8f5e9"}
-OVERALL_BORDER = {"red": "#e53935", "yellow": "#f9a825", "green": "#43a047"}
-SCORE_COLOR = {"Aggressive": "#e53935", "Mixed": "#f9a825",
-               "Fair": "#1976d2", "User-friendly": "#43a047"}
+# ── design tokens ─────────────────────────────────────────────────────────────
+RISK = {
+    "red":     {"icon": "🔴", "label": "High risk",      "border": "#e53935", "bg": "#fdecea", "tag_bg": "#fdecea", "tag_fg": "#b71c1c"},
+    "yellow":  {"icon": "🟡", "label": "Moderate",       "border": "#f9a825", "bg": "#fff8e1", "tag_bg": "#fff8e1", "tag_fg": "#7b5800"},
+    "green":   {"icon": "🟢", "label": "User-friendly",  "border": "#43a047", "bg": "#e8f5e9", "tag_bg": "#e8f5e9", "tag_fg": "#1b5e20"},
+    "unusual": {"icon": "⚠️", "label": "Unusual",        "border": "#7b1fa2", "bg": "#f3e5f5", "tag_bg": "#f3e5f5", "tag_fg": "#4a148c"},
+}
+SCORE_COLOR = {
+    "Aggressive":    "#e53935",
+    "Mixed":         "#f9a825",
+    "Fair":          "#1976d2",
+    "User-friendly": "#43a047",
+}
+INPUT_ICON = {"url": "🔗", "pdf": "📄", "text": "📝"}
 
 st.set_page_config(page_title="TermLens", page_icon="🔍", layout="wide")
 
-st.title("🔍 TermLens")
-st.caption(
-    "Paste, upload, or link a T&C document — get a plain-English breakdown "
-    "or compare up to 3 companies side by side."
-)
+# ── global CSS ────────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+  #MainMenu, footer, header { visibility: hidden; }
+  .block-container { padding-top: 1.4rem !important; padding-bottom: 2rem !important; }
+
+  /* clause item cards */
+  .clause-card {
+      border-radius: 6px;
+      padding: 11px 15px;
+      margin-bottom: 8px;
+      line-height: 1.5;
+  }
+  .clause-card .clause-text { font-size: 0.96em; font-weight: 500; }
+  .unusual-tag {
+      font-size: 0.73em; font-weight: 600; letter-spacing: 0.03em;
+      padding: 2px 7px; border-radius: 3px; margin-left: 8px;
+      vertical-align: middle;
+  }
+  /* section headers */
+  .section-title {
+      font-size: 1.05em; font-weight: 700;
+      margin: 0 0 14px 0; padding-bottom: 8px;
+      border-bottom: 2px solid;
+  }
+  /* topic table rows */
+  .topic-row {
+      padding: 8px 4px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 0.93em;
+  }
+  /* score card */
+  .score-card {
+      text-align: center; padding: 18px 10px;
+      border-radius: 10px; border: 2px solid;
+  }
+</style>
+""", unsafe_allow_html=True)
+
+# ── session state defaults ────────────────────────────────────────────────────
+for _k, _v in {
+    "cmp_running":   False,
+    "cmp_result":    None,
+    "cmp_error":     None,
+    "cmp_cancelled": False,
+    "num_companies": 2,
+}.items():
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
+
+# ── auto-load last analysis on first run ──────────────────────────────────────
+if "_last_analysis" not in st.session_state:
+    try:
+        _resp = httpx.get(f"{API_BASE}/last-analysis", timeout=3)
+        if _resp.status_code == 200:
+            st.session_state["_last_analysis"] = _resp.json()
+    except Exception:
+        pass  # API not running yet — user will analyze manually
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SHARED HELPERS
+# ═════════════════════════════════════════════════════════════════════════════
+
+def risk_banner(risk: str, tldr: str) -> None:
+    r = RISK[risk]
+    st.markdown(f"""
+    <div style="background:{r['bg']};border-left:5px solid {r['border']};
+    padding:16px 20px;border-radius:8px;margin-bottom:4px;">
+      <div style="font-size:0.85em;font-weight:700;color:{r['border']};
+      text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">
+        {r['icon']} Overall risk — {r['label']}
+      </div>
+      <div style="font-size:1.02em;color:#212529">{tldr}</div>
+    </div>""", unsafe_allow_html=True)
+
+
+def render_section(title: str, risk_key: str, clauses: list[dict]) -> None:
+    """Render a full-HTML section card with scrollable clause list (max ~10 visible)."""
+    r = RISK[risk_key]
+    count = len(clauses)
+    count_badge = (
+        f"<span style='background:{r['border']};color:#fff;font-size:0.7em;"
+        f"font-weight:700;padding:2px 8px;border-radius:10px;margin-left:8px;"
+        f"vertical-align:middle'>{count}</span>"
+        if count else ""
+    )
+
+    # Build all clause cards as HTML (native <details> handles citation toggle)
+    items_html = ""
+    for c in clauses:
+        unusual = (
+            "<span style='background:#fff3cd;color:#7b5800;font-size:0.7em;"
+            "font-weight:700;padding:1px 7px;border-radius:3px;margin-left:7px;"
+            "vertical-align:middle'>⚠ Unusual</span>"
+            if c.get("unusual") else ""
+        )
+        citation_html = ""
+        if c.get("citation"):
+            escaped = (c["citation"]
+                       .replace("&", "&amp;")
+                       .replace("<", "&lt;")
+                       .replace(">", "&gt;"))
+            citation_html = (
+                f"<details style='margin-top:5px'>"
+                f"<summary style='font-size:0.74em;color:#888;cursor:pointer;"
+                f"user-select:none;list-style:none'>📌 Original clause</summary>"
+                f"<div style='margin-top:4px;padding:6px 9px;background:#f8f9fa;"
+                f"border-radius:4px;font-size:0.76em;font-family:monospace;"
+                f"white-space:pre-wrap;color:#444;line-height:1.45'>{escaped}</div>"
+                f"</details>"
+            )
+        items_html += (
+            f"<div style='background:{r['bg']};border-left:3px solid {r['border']};"
+            f"border-radius:0 5px 5px 0;padding:9px 12px;margin-bottom:7px;'>"
+            f"<div style='font-size:0.88em;font-weight:500;color:#212529;line-height:1.45'>"
+            f"{c['summary']}{unusual}</div>"
+            f"{citation_html}"
+            f"</div>"
+        )
+
+    if not items_html:
+        items_html = (
+            "<div style='color:#bbb;font-size:0.85em;padding:12px 0;text-align:center'>"
+            "None identified</div>"
+        )
+
+    # ~58px per clause card → 10 clauses ≈ 580px
+    st.markdown(
+        f"<div style='border:1px solid #e0e0e0;border-radius:10px;padding:16px;"
+        f"background:#fff;'>"
+        f"<div style='font-size:0.93em;font-weight:700;color:{r['border']};"
+        f"padding-bottom:10px;margin-bottom:12px;border-bottom:2px solid {r['border']}'>"
+        f"{r['icon']} {title}{count_badge}</div>"
+        f"<div style='max-height:580px;overflow-y:auto;padding-right:3px'>"
+        f"{items_html}"
+        f"</div></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def meta_pills(char_count: int, chunk_count: int, source: str) -> None:
+    src = source[:50] + ("…" if len(source) > 50 else "")
+    st.markdown(
+        f"<div style='display:flex;gap:10px;margin:10px 0 18px 0;flex-wrap:wrap'>"
+        f"<span style='background:#f1f3f4;border-radius:20px;padding:4px 12px;"
+        f"font-size:0.83em;color:#555'>📏 {char_count:,} characters</span>"
+        f"<span style='background:#f1f3f4;border-radius:20px;padding:4px 12px;"
+        f"font-size:0.83em;color:#555'>🧩 {chunk_count} sections</span>"
+        f"<span style='background:#f1f3f4;border-radius:20px;padding:4px 12px;"
+        f"font-size:0.83em;color:#555'>📂 {src}</span>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# HEADER
+# ═════════════════════════════════════════════════════════════════════════════
+st.markdown("""
+<div style="margin-bottom:1.2rem">
+  <span style="font-size:2em;font-weight:800;letter-spacing:-0.02em">🔍 TermLens</span>
+  <span style="font-size:0.97em;color:#666;margin-left:14px">
+    Paste, upload, or link any Terms &amp; Conditions — get a plain-English breakdown.
+  </span>
+</div>
+""", unsafe_allow_html=True)
 
 main_tab, compare_tab, history_tab = st.tabs(["🔍 Analyze", "📊 Compare", "📜 History"])
 
 
-# ── shared helper ─────────────────────────────────────────────────────────────
-def render_clauses(title: str, icon: str, clauses: list[dict]) -> None:
-    st.markdown(f"### {icon} {title}")
-    if not clauses:
-        st.caption("None identified in this document.")
-        return
-    for c in clauses:
-        badge = " ⚠️ *Unusual*" if c["unusual"] else ""
-        with st.expander(f"{RISK_COLOR[c['risk']]} {c['summary']}{badge}", expanded=False):
-            st.markdown(f"**Risk level:** {RISK_LABEL[c['risk']]}")
-            if c["citation"]:
-                st.markdown("**Original clause:**")
-                st.code(c["citation"], language=None)
-    st.markdown("")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════════════
 # TAB 1 — ANALYZE
-# ═══════════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════════════
 with main_tab:
-    input_text, input_pdf, input_url = st.tabs(
-        ["📝 Paste Text", "📄 Upload PDF", "🔗 Enter URL"]
-    )
 
-    submitted = False
-    api_endpoint = None
-    payload = None
-    files = None
+    with st.container(border=True):
+        input_text, input_pdf, input_url = st.tabs(
+            ["📝 Paste Text", "📄 Upload PDF", "🔗 Enter URL"]
+        )
+        submitted = False
+        api_endpoint = None
+        payload = None
+        files = None
 
-    with input_text:
-        pasted = st.text_area("Paste the Terms and Conditions text here", height=260,
-                              placeholder="Paste the full T&C text…")
-        if st.button("Analyze Text", type="primary", use_container_width=True, key="btn_text"):
-            if not pasted.strip():
-                st.warning("Please paste some text first.")
-            else:
-                submitted = True
-                api_endpoint = f"{API_BASE}/analyze/text"
-                payload = {"text": pasted}
+        with input_text:
+            pasted = st.text_area("", height=220,
+                                  placeholder="Paste the full Terms and Conditions text here…",
+                                  label_visibility="collapsed")
+            if st.button("Analyze Text", type="primary", use_container_width=True, key="btn_text"):
+                if not pasted.strip():
+                    st.warning("Please paste some text first.")
+                else:
+                    submitted, api_endpoint = True, f"{API_BASE}/analyze/text"
+                    payload = {"text": pasted}
 
-    with input_pdf:
-        uploaded = st.file_uploader("Upload a PDF", type=["pdf"], key="single_pdf")
-        if st.button("Analyze PDF", type="primary", use_container_width=True, key="btn_pdf"):
-            if not uploaded:
-                st.warning("Please upload a PDF file first.")
-            else:
-                submitted = True
-                api_endpoint = f"{API_BASE}/analyze/pdf"
-                files = {"file": (uploaded.name, uploaded.read(), "application/pdf")}
+        with input_pdf:
+            uploaded = st.file_uploader("", type=["pdf"], key="single_pdf",
+                                        label_visibility="collapsed")
+            if st.button("Analyze PDF", type="primary", use_container_width=True, key="btn_pdf"):
+                if not uploaded:
+                    st.warning("Please upload a PDF file first.")
+                else:
+                    submitted, api_endpoint = True, f"{API_BASE}/analyze/pdf"
+                    files = {"file": (uploaded.name, uploaded.read(), "application/pdf")}
 
-    with input_url:
-        url_input = st.text_input("Enter the URL of the Terms and Conditions page",
-                                  placeholder="https://example.com/terms")
-        if st.button("Analyze URL", type="primary", use_container_width=True, key="btn_url"):
-            if not url_input.strip():
-                st.warning("Please enter a URL first.")
-            else:
-                submitted = True
-                api_endpoint = f"{API_BASE}/analyze/url"
-                payload = {"url": url_input.strip()}
+        with input_url:
+            url_input = st.text_input("", placeholder="https://example.com/terms",
+                                      label_visibility="collapsed")
+            if st.button("Analyze URL", type="primary", use_container_width=True, key="btn_url"):
+                if not url_input.strip():
+                    st.warning("Please enter a URL first.")
+                else:
+                    submitted, api_endpoint = True, f"{API_BASE}/analyze/url"
+                    payload = {"url": url_input.strip()}
 
     if submitted and api_endpoint:
         with st.spinner("Analyzing… this may take 20–40 seconds for long documents."):
             try:
-                if files:
-                    resp = httpx.post(api_endpoint, files=files, timeout=120)
-                else:
-                    resp = httpx.post(api_endpoint, data=payload, timeout=120)
+                resp = (
+                    httpx.post(api_endpoint, files=files, timeout=120)
+                    if files else
+                    httpx.post(api_endpoint, data=payload, timeout=120)
+                )
                 if resp.status_code != 200:
                     st.error(f"Analysis failed: {resp.json().get('detail', resp.text)}")
                     st.stop()
                 data = resp.json()
             except httpx.ConnectError:
-                st.error("Cannot reach the API. Run: `uvicorn api:app --reload --port 8001`")
+                st.error("Cannot reach the API. Run: `make serve`")
                 st.stop()
             except Exception as e:
                 st.error(f"Unexpected error: {e}")
                 st.stop()
+        st.session_state["_last_analysis"] = data
 
+    if "_last_analysis" in st.session_state:
+        data   = st.session_state["_last_analysis"]
         result = data["result"]
-        risk = result["overall_risk"]
+        risk   = result["overall_risk"]
 
         st.markdown("---")
-        st.markdown(
-            f"""<div style="background:{OVERALL_BG[risk]};border-left:5px solid
-            {OVERALL_BORDER[risk]};padding:16px 20px;border-radius:6px;margin-bottom:12px;">
-            <strong>{RISK_COLOR[risk]} Overall risk: {RISK_LABEL[risk]}</strong><br/>
-            <span style="font-size:1.05em">{result['tldr']}</span></div>""",
-            unsafe_allow_html=True,
+        risk_banner(risk, result["tldr"])
+        meta_pills(data["char_count"], data["chunk_count"], result["source"])
+
+        # 4 sections side by side, each scrollable
+        c1, c2, c3, c4 = st.columns(4, gap="medium")
+        with c1:
+            render_section("Rights You Give Up", "red",    result["rights_given_up"])
+        with c2:
+            render_section("Your Obligations",   "yellow", result["obligations"])
+        with c3:
+            render_section("Your Benefits",      "green",  result["benefits"])
+        with c4:
+            render_section("Unusual Clauses",    "unusual", result["unusual_clauses"])
+
+        st.markdown("")
+        st.download_button(
+            "⬇  Download analysis (JSON)",
+            json.dumps(result, indent=2),
+            "tc_analysis.json", "application/json",
         )
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Characters analyzed", f"{data['char_count']:,}")
-        c2.metric("Sections processed", data["chunk_count"])
-        c3.metric("Source", result["source"][:40] + ("…" if len(result["source"]) > 40 else ""))
-        st.markdown("---")
 
-        col_l, col_r = st.columns(2)
-        with col_l:
-            render_clauses("Rights You Give Up", "🔴", result["rights_given_up"])
-            render_clauses("Your Obligations", "🟡", result["obligations"])
-        with col_r:
-            render_clauses("Your Benefits", "🟢", result["benefits"])
-            render_clauses("Unusual Clauses", "⚠️", result["unusual_clauses"])
-
-        st.markdown("---")
-        st.download_button("⬇ Download analysis (JSON)", json.dumps(result, indent=2),
-                           "tc_analysis.json", "application/json")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════════════
 # TAB 2 — COMPARE
-# ═══════════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════════════
 with compare_tab:
-    st.markdown("### Compare up to 3 companies side by side")
-    st.caption(
-        "For each company enter a name, then paste text, upload a PDF, or provide a URL. "
-        "Add a second or third company with the buttons below."
+    st.markdown(
+        "<div style='font-size:1.05em;font-weight:600;margin-bottom:6px'>"
+        "Compare up to 3 companies side by side</div>",
+        unsafe_allow_html=True,
     )
+    st.caption("For each company enter a name, then paste text, upload a PDF, or provide a URL.")
 
-    if "num_companies" not in st.session_state:
-        st.session_state.num_companies = 2
-
-    col_add, col_remove, _ = st.columns([1, 1, 4])
-    with col_add:
+    add_col, rem_col, _ = st.columns([1, 1, 5])
+    with add_col:
         if st.session_state.num_companies < 3:
             if st.button("＋ Add company", use_container_width=True):
                 st.session_state.num_companies += 1
                 st.rerun()
-    with col_remove:
+    with rem_col:
         if st.session_state.num_companies > 2:
-            if st.button("－ Remove last", use_container_width=True):
+            if st.button("－ Remove", use_container_width=True):
                 st.session_state.num_companies -= 1
                 st.rerun()
 
     st.markdown("")
     company_inputs = []
-    slot_cols = st.columns(st.session_state.num_companies)
+    slot_cols = st.columns(st.session_state.num_companies, gap="medium")
+    labels = ["🅐 Company 1", "🅑 Company 2", "🅒 Company 3"]
 
     for idx, col in enumerate(slot_cols):
         with col:
-            label = ["🅐 Company 1", "🅑 Company 2", "🅒 Company 3"][idx]
-            st.markdown(f"**{label}**")
-            name = st.text_input("Company name", key=f"cmp_name_{idx}",
-                                 placeholder=f"e.g. Spotify")
-            mode = st.radio("Input via", ["Paste text", "Upload PDF", "URL"],
-                            key=f"cmp_mode_{idx}", horizontal=True)
+            with st.container(border=True):
+                st.markdown(
+                    f"<div style='font-weight:700;font-size:1em;margin-bottom:8px'>"
+                    f"{labels[idx]}</div>",
+                    unsafe_allow_html=True,
+                )
+                name = st.text_input("Company name", key=f"cmp_name_{idx}",
+                                     placeholder="e.g. Spotify",
+                                     label_visibility="collapsed")
+                st.caption("Company name")
+                mode = st.radio("Input via", ["Paste text", "Upload PDF", "URL"],
+                                key=f"cmp_mode_{idx}", horizontal=True,
+                                label_visibility="collapsed")
+                cmp_text = cmp_url = None
 
-            cmp_text = None
-            cmp_url = None
+                if mode == "Paste text":
+                    cmp_text = st.text_area("Paste T&C", height=180,
+                                            key=f"cmp_text_{idx}",
+                                            placeholder="Paste full T&C text…",
+                                            label_visibility="collapsed")
+                elif mode == "Upload PDF":
+                    pdf_file = st.file_uploader("Upload PDF", type=["pdf"],
+                                                key=f"cmp_pdf_{idx}",
+                                                label_visibility="collapsed")
+                    if pdf_file:
+                        with st.spinner("Extracting…"):
+                            r = httpx.post(
+                                f"{API_BASE}/extract/pdf",
+                                files={"file": (pdf_file.name, pdf_file.read(), "application/pdf")},
+                                timeout=30,
+                            )
+                            if r.status_code == 200:
+                                cmp_text = r.json()["text"]
+                                st.success(f"✓ {len(cmp_text):,} characters extracted")
+                            else:
+                                st.error(r.json().get("detail", "Extraction failed"))
+                elif mode == "URL":
+                    cmp_url = st.text_input("T&C URL", key=f"cmp_url_{idx}",
+                                            placeholder="https://…/terms",
+                                            label_visibility="collapsed")
 
-            if mode == "Paste text":
-                cmp_text = st.text_area("Paste T&C text", height=200,
-                                        key=f"cmp_text_{idx}",
-                                        placeholder="Paste full T&C here…")
-            elif mode == "Upload PDF":
-                pdf_file = st.file_uploader("Upload PDF", type=["pdf"],
-                                            key=f"cmp_pdf_{idx}")
-                if pdf_file:
-                    with st.spinner("Extracting PDF text…"):
-                        r = httpx.post(
-                            f"{API_BASE}/extract/pdf",
-                            files={"file": (pdf_file.name, pdf_file.read(),
-                                            "application/pdf")},
-                            timeout=30,
-                        )
-                        if r.status_code == 200:
-                            cmp_text = r.json()["text"]
-                            st.success(f"Extracted {len(cmp_text):,} characters")
-                        else:
-                            st.error(r.json().get("detail", "Extraction failed"))
-            elif mode == "URL":
-                cmp_url = st.text_input("T&C URL", key=f"cmp_url_{idx}",
-                                        placeholder="https://…/terms")
-
-            company_inputs.append({"name": name, "text": cmp_text, "url": cmp_url})
+                company_inputs.append({"name": name, "text": cmp_text, "url": cmp_url})
 
     st.markdown("")
-    run_compare = st.button("🔍 Run Comparison", type="primary", use_container_width=True)
 
-    if run_compare:
+    def _run_comparison_thread(payload: list[dict]) -> None:
+        try:
+            resp = httpx.post(f"{API_BASE}/compare",
+                              json={"companies": payload}, timeout=300)
+            if resp.status_code == 499:
+                st.session_state.cmp_cancelled = True
+            elif resp.status_code != 200:
+                st.session_state.cmp_error = resp.json().get("detail", resp.text)
+            else:
+                st.session_state.cmp_result = resp.json()
+        except httpx.ConnectError:
+            st.session_state.cmp_error = "Cannot reach the API. Run: `make serve`"
+        except Exception as e:
+            st.session_state.cmp_error = str(e)
+        finally:
+            st.session_state.cmp_running = False
+
+    btn_col, stop_col = st.columns([5, 1])
+    with btn_col:
+        run_compare = st.button("🔍 Run Comparison", type="primary",
+                                use_container_width=True,
+                                disabled=st.session_state.cmp_running)
+    with stop_col:
+        stop_pressed = st.button("⏹ Stop", use_container_width=True,
+                                 disabled=not st.session_state.cmp_running,
+                                 type="secondary")
+
+    if stop_pressed and st.session_state.cmp_running:
+        try:
+            httpx.post(f"{API_BASE}/compare/cancel", timeout=5)
+        except Exception:
+            pass
+        st.session_state.cmp_cancelled = True
+        st.session_state.cmp_running = False
+
+    if run_compare and not st.session_state.cmp_running:
         errors = []
         for i, c in enumerate(company_inputs):
             if not c["name"].strip():
                 errors.append(f"Company {i+1}: enter a name.")
             if not c["text"] and not c["url"]:
-                errors.append(f"Company {i+1}: provide text, a PDF, or a URL.")
+                errors.append(f"Company {i+1}: provide text, PDF, or URL.")
         if errors:
             for e in errors:
                 st.warning(e)
@@ -222,148 +416,215 @@ with compare_tab:
                  **({"text": c["text"]} if c["text"] else {"url": c["url"]})}
                 for c in company_inputs
             ]
-            with st.spinner("Analyzing and comparing… this may take 30–90 seconds."):
-                try:
-                    resp = httpx.post(f"{API_BASE}/compare",
-                                      json={"companies": payload_companies},
-                                      timeout=300)
-                    if resp.status_code != 200:
-                        st.error(f"Comparison failed: {resp.json().get('detail', resp.text)}")
-                        st.stop()
-                    cr = resp.json()
-                except httpx.ConnectError:
-                    st.error("Cannot reach the API. Run: `uvicorn api:app --reload --port 8001`")
-                    st.stop()
-                except Exception as e:
-                    st.error(f"Error: {e}")
-                    st.stop()
+            st.session_state.cmp_running   = True
+            st.session_state.cmp_result    = None
+            st.session_state.cmp_error     = None
+            st.session_state.cmp_cancelled = False
+            threading.Thread(
+                target=_run_comparison_thread,
+                args=(payload_companies,), daemon=True,
+            ).start()
+            st.rerun()
 
-            companies = cr["companies"]
-            scores = {s["company"]: s for s in cr["scores"]}
-            winner = cr["overall_winner"]
+    if st.session_state.cmp_running:
+        st.info("⏳ Comparing companies… this may take 30–90 seconds. Hit Stop to cancel.")
+        time.sleep(2)
+        st.rerun()
 
-            st.markdown("---")
+    if st.session_state.cmp_cancelled:
+        st.warning("⏹ Comparison stopped.")
+        st.session_state.cmp_cancelled = False
+
+    if st.session_state.cmp_error:
+        st.error(f"Comparison failed: {st.session_state.cmp_error}")
+        st.session_state.cmp_error = None
+
+    cr = st.session_state.cmp_result
+    if cr:
+        companies = cr["companies"]
+        scores    = {s["company"]: s for s in cr["scores"]}
+        winner    = cr["overall_winner"]
+
+        st.markdown("---")
+
+        # ── winner banner ─────────────────────────────────────────────────────
+        st.markdown(
+            f"<div style='background:#e8f5e9;border-left:5px solid #43a047;"
+            f"padding:16px 20px;border-radius:8px;margin-bottom:20px'>"
+            f"<div style='font-size:0.82em;font-weight:700;color:#2e7d32;"
+            f"text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px'>"
+            f"✅ Best choice</div>"
+            f"<div style='font-size:1.1em;font-weight:700;color:#1b5e20'>{winner}</div>"
+            f"<div style='font-size:0.95em;color:#2e7d32;margin-top:4px'>{cr['summary']}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+        # ── score cards ───────────────────────────────────────────────────────
+        st.markdown(
+            "<div style='font-weight:700;font-size:1.05em;margin-bottom:12px'>"
+            "User-friendliness scores</div>",
+            unsafe_allow_html=True,
+        )
+        score_cols = st.columns(len(companies), gap="medium")
+        for col, company in zip(score_cols, companies):
+            s          = scores.get(company, {})
+            score_val  = s.get("score", 0)
+            label      = s.get("label", "")
+            color      = SCORE_COLOR.get(label, "#888")
+            crown      = " 👑" if company == winner else ""
+            with col:
+                with st.container(border=True):
+                    st.markdown(
+                        f"<div style='text-align:center;padding:8px 0'>"
+                        f"<div style='font-size:1em;font-weight:700'>{company}{crown}</div>"
+                        f"<div style='font-size:2.4em;font-weight:800;color:{color};line-height:1.2'>{score_val}</div>"
+                        f"<div style='font-size:0.82em;color:{color};font-weight:600'>{label}</div>"
+                        f"<div style='background:#eee;border-radius:4px;margin-top:8px;height:8px'>"
+                        f"<div style='width:{score_val}%;background:{color};height:8px;border-radius:4px'></div>"
+                        f"</div></div>",
+                        unsafe_allow_html=True,
+                    )
+
+        # ── topic table ───────────────────────────────────────────────────────
+        st.markdown("")
+        with st.container(border=True):
             st.markdown(
-                f"""<div style="background:#e8f5e9;border-left:5px solid #43a047;
-                padding:16px 20px;border-radius:6px;margin-bottom:16px;">
-                <strong>✅ Best choice: {winner}</strong><br/>
-                <span style="font-size:1.02em">{cr['summary']}</span></div>""",
+                "<div style='font-weight:700;font-size:1.05em;margin-bottom:14px'>"
+                "Topic-by-topic breakdown</div>",
                 unsafe_allow_html=True,
             )
+            # header row
+            hcols = st.columns([2] + [2] * len(companies))
+            hcols[0].markdown("**Topic**")
+            for i, company in enumerate(companies):
+                hcols[i + 1].markdown(f"**{company}**")
+            st.divider()
 
-            st.markdown("#### User-friendliness scores")
-            score_cols = st.columns(len(companies))
-            for col, company in zip(score_cols, companies):
-                s = scores.get(company, {})
-                score_val = s.get("score", 0)
-                label = s.get("label", "")
-                color = SCORE_COLOR.get(label, "#888")
-                crown = " 👑" if company == winner else ""
-                col.markdown(
-                    f"""<div style="text-align:center;padding:12px;border-radius:8px;
-                    border:2px solid {color};">
-                    <div style="font-size:1.05em;font-weight:bold">{company}{crown}</div>
-                    <div style="font-size:2em;font-weight:bold;color:{color}">{score_val}</div>
-                    <div style="font-size:0.85em;color:{color}">{label}</div>
-                    <div style="background:#eee;border-radius:4px;margin-top:6px;">
-                    <div style="width:{score_val}%;background:{color};height:8px;
-                    border-radius:4px;"></div></div></div>""",
+            for row_idx, topic in enumerate(cr["topics"]):
+                row_bg = "#f8f9fa" if row_idx % 2 == 0 else "#ffffff"
+                tcols  = st.columns([2] + [2] * len(companies))
+                tcols[0].markdown(
+                    f"<div style='background:{row_bg};padding:6px 4px;border-radius:4px;"
+                    f"font-weight:600;font-size:0.93em'>{topic['topic']}</div>",
                     unsafe_allow_html=True,
                 )
-
-            st.markdown("---")
-            st.markdown("#### Topic-by-topic breakdown")
-            header_cols = st.columns([2] + [2] * len(companies))
-            header_cols[0].markdown("**Topic**")
-            for i, company in enumerate(companies):
-                header_cols[i + 1].markdown(f"**{company}**")
-            st.markdown('<hr style="margin:4px 0"/>', unsafe_allow_html=True)
-
-            for topic in cr["topics"]:
-                row_cols = st.columns([2] + [2] * len(companies))
-                row_cols[0].markdown(f"**{topic['topic']}**")
                 for i, company in enumerate(companies):
-                    stance = topic["stances"].get(company, {})
-                    risk = stance.get("risk", "yellow")
+                    stance  = topic["stances"].get(company, {})
+                    risk    = stance.get("risk", "yellow")
                     summary = stance.get("summary", "No information")
                     present = stance.get("present", True)
-                    crown = " 👑" if stance.get("winner") else ""
-                    icon = RISK_COLOR.get(risk, "⚪")
-                    row_cols[i + 1].markdown(
-                        f"{'🟢 Not present' if not present else f'{icon} {summary}'}{crown}"
+                    crown   = " 👑" if stance.get("winner") else ""
+                    icon    = RISK.get(risk, RISK["yellow"])["icon"]
+                    text    = "🟢 Not present" if not present else f"{icon} {summary}"
+                    tcols[i + 1].markdown(
+                        f"<div style='background:{row_bg};padding:6px 4px;border-radius:4px;"
+                        f"font-size:0.88em'>{text}{crown}</div>",
+                        unsafe_allow_html=True,
                     )
-                st.markdown('<hr style="margin:2px 0;border-color:#eee"/>', unsafe_allow_html=True)
 
-            st.markdown("")
-            st.download_button("⬇ Download comparison (JSON)", json.dumps(cr, indent=2),
-                               "tc_comparison.json", "application/json")
+        st.markdown("")
+        st.download_button(
+            "⬇  Download comparison (JSON)",
+            json.dumps(cr, indent=2),
+            "tc_comparison.json", "application/json",
+        )
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════════════
 # TAB 3 — HISTORY
-# ═══════════════════════════════════════════════════════════════════════════════
-INPUT_ICON = {"url": "🔗", "pdf": "📄", "text": "📝"}
-
+# ═════════════════════════════════════════════════════════════════════════════
 with history_tab:
-    st.markdown("### Analysis history")
-    st.caption("Every document analyzed in this session is recorded here automatically.")
-
     try:
         entries = httpx.get(f"{API_BASE}/history", timeout=5).json()
     except Exception:
-        st.error("Cannot reach the API. Run: `uvicorn api:app --reload --port 8002`")
+        st.error("Cannot reach the API. Run: `make serve`")
         entries = []
 
     if not entries:
-        st.info("No analyses recorded yet. Run an analysis on the Analyze tab.")
+        with st.container(border=True):
+            st.markdown(
+                "<div style='text-align:center;padding:30px 0;color:#888'>"
+                "📭 No analyses recorded yet.<br/>"
+                "<span style='font-size:0.9em'>Run an analysis on the Analyze tab to get started.</span>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
     else:
-        # summary metrics
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Total analyzed", len(entries))
-        m2.metric("🔴 High risk",   sum(1 for e in entries if e["overall_risk"] == "red"))
-        m3.metric("🟡 Moderate",    sum(1 for e in entries if e["overall_risk"] == "yellow"))
-        m4.metric("🟢 User-friendly", sum(1 for e in entries if e["overall_risk"] == "green"))
+        # ── summary bar ───────────────────────────────────────────────────────
+        total  = len(entries)
+        n_red  = sum(1 for e in entries if e["overall_risk"] == "red")
+        n_yel  = sum(1 for e in entries if e["overall_risk"] == "yellow")
+        n_grn  = sum(1 for e in entries if e["overall_risk"] == "green")
 
-        st.markdown("---")
+        with st.container(border=True):
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Total analyzed", total)
+            m2.metric("🔴 High risk",      n_red)
+            m3.metric("🟡 Moderate",       n_yel)
+            m4.metric("🟢 User-friendly",  n_grn)
 
+        st.markdown("")
+
+        # ── entry cards ───────────────────────────────────────────────────────
         for entry in entries:
-            risk       = entry["overall_risk"]
-            icon       = INPUT_ICON.get(entry["input_type"], "📄")
-            risk_icon  = RISK_COLOR[risk]
-            counts     = entry["counts"]
-            ts         = entry["timestamp"][:16].replace("T", "  ")
+            risk    = entry["overall_risk"]
+            r       = RISK[risk]
+            counts  = entry["counts"]
+            ts      = entry["timestamp"][:16].replace("T", "  ")
+            in_icon = INPUT_ICON.get(entry["input_type"], "📄")
 
-            header = f"{risk_icon} {icon} {entry['input_label']}"
-
-            with st.expander(header, expanded=False):
-                col_meta, col_counts = st.columns([3, 2])
-
-                with col_meta:
+            with st.container(border=True):
+                top_col, del_col = st.columns([9, 1])
+                with top_col:
                     st.markdown(
-                        f"""<div style="background:{OVERALL_BG[risk]};
-                        border-left:4px solid {OVERALL_BORDER[risk]};
-                        padding:10px 14px;border-radius:5px;">
-                        <strong>{risk_icon} {RISK_LABEL[risk]}</strong><br/>
-                        <span style="font-size:0.97em">{entry['tldr']}</span>
-                        </div>""",
+                        f"<div style='display:flex;align-items:center;gap:10px;margin-bottom:10px'>"
+                        f"<span style='font-size:1.3em'>{in_icon}</span>"
+                        f"<span style='font-weight:600;font-size:0.97em'>{entry['input_label']}</span>"
+                        f"<span style='background:{r['tag_bg']};color:{r['tag_fg']};"
+                        f"font-size:0.75em;font-weight:700;padding:2px 9px;border-radius:12px;"
+                        f"text-transform:uppercase;letter-spacing:0.05em'>"
+                        f"{r['icon']} {r['label']}</span>"
+                        f"</div>",
                         unsafe_allow_html=True,
                     )
-                    st.caption(f"🕐 {ts} UTC  ·  source: {entry['source']}")
+                with del_col:
+                    if st.button("🗑", key=f"del_{entry['id']}", help="Remove this entry"):
+                        httpx.delete(f"{API_BASE}/history/{entry['id']}", timeout=5)
+                        st.rerun()
 
-                with col_counts:
-                    st.markdown("**Clause breakdown**")
+                # TL;DR box
+                st.markdown(
+                    f"<div style='background:{r['bg']};border-left:4px solid {r['border']};"
+                    f"padding:10px 14px;border-radius:0 6px 6px 0;margin-bottom:10px;"
+                    f"font-size:0.93em'>{entry['tldr']}</div>",
+                    unsafe_allow_html=True,
+                )
+
+                # counts + meta in one row
+                cnt_col, meta_col = st.columns([3, 2])
+                with cnt_col:
                     st.markdown(
-                        f"🔴 Rights given up: **{counts['rights_given_up']}**  \n"
-                        f"🟡 Obligations: **{counts['obligations']}**  \n"
-                        f"🟢 Benefits: **{counts['benefits']}**  \n"
-                        f"⚠️ Unusual: **{counts['unusual_clauses']}**"
+                        f"<div style='display:flex;gap:8px;flex-wrap:wrap'>"
+                        f"<span style='background:#fdecea;color:#b71c1c;padding:3px 10px;"
+                        f"border-radius:12px;font-size:0.8em;font-weight:600'>"
+                        f"🔴 Rights: {counts['rights_given_up']}</span>"
+                        f"<span style='background:#fff8e1;color:#7b5800;padding:3px 10px;"
+                        f"border-radius:12px;font-size:0.8em;font-weight:600'>"
+                        f"🟡 Obligations: {counts['obligations']}</span>"
+                        f"<span style='background:#e8f5e9;color:#1b5e20;padding:3px 10px;"
+                        f"border-radius:12px;font-size:0.8em;font-weight:600'>"
+                        f"🟢 Benefits: {counts['benefits']}</span>"
+                        f"<span style='background:#fff3e0;color:#e65100;padding:3px 10px;"
+                        f"border-radius:12px;font-size:0.8em;font-weight:600'>"
+                        f"⚠️ Unusual: {counts['unusual_clauses']}</span>"
+                        f"</div>",
+                        unsafe_allow_html=True,
                     )
+                with meta_col:
+                    st.caption(f"🕐 {ts} UTC · {entry['source']}")
 
-                if st.button("🗑 Remove", key=f"del_{entry['id']}"):
-                    httpx.delete(f"{API_BASE}/history/{entry['id']}", timeout=5)
-                    st.rerun()
-
-        st.markdown("---")
-        if st.button("🗑 Clear all history", type="secondary"):
+        st.markdown("")
+        if st.button("🗑  Clear all history", type="secondary"):
             httpx.delete(f"{API_BASE}/history", timeout=5)
             st.rerun()

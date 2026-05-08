@@ -1,16 +1,22 @@
-"""FastAPI backend. Run with: uvicorn api:app --reload --port 8001"""
+"""FastAPI backend. Run with: uvicorn api:app --reload --port 8002"""
 
+import uuid
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 import aggregator
 import analyzer
 import comparator
+from comparator import ComparisonCancelled
 import extractor
 import history
 import preprocessor
 from comparison_schemas import CompareRequest, ComparisonResult
 from schemas import AnalyzeResponse, HistoryEntry
+
+# ── Comparison cancellation registry ─────────────────────────────────────────
+# task_id → cancelled flag. Single-user local app so a plain dict is enough.
+_cancel_flags: dict[str, bool] = {}
 
 app = FastAPI(title="TermLens API", version="1.0.0")
 
@@ -38,17 +44,20 @@ def _run_pipeline(
     raw_clauses = analyzer.analyze_chunks(chunks)
     result = aggregator.aggregate(raw_clauses, source=source)
 
+    result_dict = result.model_dump()
     history.save(
         input_type=input_type,
         input_label=input_label or source,
-        result=result.model_dump(),
+        result=result_dict,
     )
 
-    return AnalyzeResponse(
+    response = AnalyzeResponse(
         result=result,
         char_count=len(text),
         chunk_count=len(chunks),
     )
+    history.save_last_analysis(response.model_dump())
+    return response
 
 
 @app.post("/analyze/text", response_model=AnalyzeResponse)
@@ -100,32 +109,66 @@ def compare(req: CompareRequest) -> ComparisonResult:
     if not (2 <= len(req.companies) <= 3):
         raise HTTPException(status_code=400, detail="Provide 2 or 3 companies to compare.")
 
-    results = {}
-    for entry in req.companies:
-        name = entry.name.strip() or f"Company {len(results) + 1}"
+    task_id = str(uuid.uuid4())
+    _cancel_flags[task_id] = False
 
-        if entry.url:
-            try:
-                text = extractor.extract_from_url(entry.url)
-            except ValueError as e:
-                raise HTTPException(status_code=422, detail=f"{name}: {e}")
-        elif entry.text:
-            text = entry.text.strip()
-        else:
-            raise HTTPException(status_code=400, detail=f"{name}: provide text or url.")
+    def is_cancelled() -> bool:
+        return _cancel_flags.get(task_id, False)
 
-        if len(text) < 100:
-            raise HTTPException(status_code=400, detail=f"{name}: text too short.")
+    try:
+        results = {}
+        for entry in req.companies:
+            if is_cancelled():
+                raise HTTPException(status_code=499, detail="Comparison cancelled by user.")
 
-        if not preprocessor.validate(text):
-            raise HTTPException(
-                status_code=422,
-                detail=f"{name}: does not appear to be a T&C document.",
-            )
+            name = entry.name.strip() or f"Company {len(results) + 1}"
 
-        results[name] = comparator.analyze_company(name, text)
+            if entry.url:
+                try:
+                    text = extractor.extract_from_url(entry.url)
+                except ValueError as e:
+                    raise HTTPException(status_code=422, detail=f"{name}: {e}")
+            elif entry.text:
+                text = entry.text.strip()
+            else:
+                raise HTTPException(status_code=400, detail=f"{name}: provide text or url.")
 
-    return comparator.compare(results)
+            if len(text) < 100:
+                raise HTTPException(status_code=400, detail=f"{name}: text too short.")
+
+            if not preprocessor.validate(text):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{name}: does not appear to be a T&C document.",
+                )
+
+            results[name] = comparator.analyze_company(name, text)
+
+        if is_cancelled():
+            raise HTTPException(status_code=499, detail="Comparison cancelled by user.")
+
+        return comparator.compare(results, is_cancelled=is_cancelled)
+
+    except ComparisonCancelled:
+        raise HTTPException(status_code=499, detail="Comparison cancelled by user.")
+    finally:
+        _cancel_flags.pop(task_id, None)
+
+
+@app.post("/compare/cancel")
+def cancel_compare() -> dict:
+    """Signal any running comparison to stop at its next checkpoint."""
+    for task_id in _cancel_flags:
+        _cancel_flags[task_id] = True
+    return {"cancelled": True}
+
+
+@app.get("/last-analysis")
+def get_last_analysis() -> dict:
+    data = history.load_last_analysis()
+    if not data:
+        raise HTTPException(status_code=404, detail="No analysis on record yet.")
+    return data
 
 
 @app.get("/history", response_model=list[HistoryEntry])

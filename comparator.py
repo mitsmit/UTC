@@ -161,16 +161,35 @@ def _write_summary(
     return response.choices[0].message.content.strip()
 
 
+class ComparisonCancelled(Exception):
+    pass
+
+
 # ── Main entry point ──────────────────────────────────────────────────────────
 
-def compare(results: dict[str, AnalysisResult]) -> ComparisonResult:
+def compare(
+    results: dict[str, AnalysisResult],
+    is_cancelled: callable = lambda: False,
+) -> ComparisonResult:
     """
-    results: {company_name: AnalysisResult}
-    Returns a ComparisonResult ready for the API / UI.
+    results:      {company_name: AnalysisResult}
+    is_cancelled: callable that returns True when the user has stopped the job.
+    Raises ComparisonCancelled if stopped mid-way.
     """
     companies = list(results.keys())
+
+    if is_cancelled():
+        raise ComparisonCancelled()
+
     topics = _align_topics(results)
+
+    if is_cancelled():
+        raise ComparisonCancelled()
+
     scores = _score_companies(results)
+
+    if is_cancelled():
+        raise ComparisonCancelled()
 
     overall_winner = max(scores, key=lambda s: s.score).company if scores else companies[0]
     summary = _write_summary(overall_winner, scores, topics)

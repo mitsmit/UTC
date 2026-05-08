@@ -19,7 +19,7 @@ def validate(text: str) -> bool:
         model=config.CHAT_MODEL,
         messages=[{"role": "user", "content": VALIDATOR_PROMPT.format(sample=sample)}],
         max_tokens=5,
-        temperature=0,
+        temperature=0.2,
     )
     answer = response.choices[0].message.content.strip().upper()
     return "YES" in answer

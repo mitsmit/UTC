@@ -65,8 +65,34 @@ def _generate_tldr(buckets: dict[str, list[Clause]]) -> str:
 
 
 def _overall_risk(buckets: dict[str, list[Clause]]) -> RiskLevel:
-    all_risks = [c.risk for bucket in buckets.values() for c in bucket]
-    risk_summary = ", ".join(r.value for r in all_risks) if all_risks else "none"
+    all_clauses = [c for bucket in buckets.values() for c in bucket]
+    red_count    = sum(1 for c in all_clauses if c.risk == RiskLevel.red)
+    yellow_count = sum(1 for c in all_clauses if c.risk == RiskLevel.yellow)
+    has_rights_given_up = len(buckets.get("rights_given_up", [])) > 0
+    has_unusual         = len(buckets.get("unusual_clauses", [])) > 0
+
+    # ── Rule-based overrides (no LLM needed for clear-cut cases) ─────────────
+    # Empty or trivial document
+    if not all_clauses:
+        return RiskLevel.green
+
+    # No red clauses, nothing surrendered, nothing unusual → green
+    if red_count == 0 and not has_rights_given_up and not has_unusual:
+        # A handful of yellow-only clauses (e.g. age requirement) is still green
+        if yellow_count <= 2:
+            return RiskLevel.green
+
+    # All clauses are green → green regardless of count
+    if red_count == 0 and yellow_count == 0:
+        return RiskLevel.green
+
+    # ── LLM call for genuinely ambiguous cases ────────────────────────────────
+    risk_summary = (
+        f"{red_count} red, {yellow_count} yellow, "
+        f"{len(all_clauses) - red_count - yellow_count} green clauses. "
+        f"Rights given up: {len(buckets.get('rights_given_up', []))}. "
+        f"Unusual clauses: {len(buckets.get('unusual_clauses', []))}."
+    )
 
     response = _client.chat.completions.create(
         model=config.CHAT_MODEL,

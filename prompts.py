@@ -25,6 +25,8 @@ Guidelines:
 - Do NOT invent clauses. Only extract what is explicitly stated in the text.
 - Omit trivial, boilerplate clauses (e.g. "this agreement is governed by law").
 - Each clause must appear in exactly one category (no duplicates).
+- If some clauses are too common but still worth noting, categorize them as "yellow" risk but not "unusual".
+- Explain your reasoning for the risk level in the summary, but do not editorialize beyond that.
 
 Return a JSON object with a single key "clauses" whose value is an array of clause objects.
 If no relevant clauses are found in this excerpt, return {{"clauses": []}}.

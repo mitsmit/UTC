@@ -8,7 +8,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-HISTORY_FILE = Path("./history.json")
+HISTORY_FILE       = Path("./history.json")
+LAST_ANALYSIS_FILE = Path("./last_analysis.json")
 
 
 def _load_raw() -> list[dict]:
@@ -71,3 +72,20 @@ def clear() -> int:
     count = len(_load_raw())
     _save_raw([])
     return count
+
+
+def save_last_analysis(data: dict) -> None:
+    """Persist the full AnalyzeResponse dict so the UI can pre-load it on startup."""
+    LAST_ANALYSIS_FILE.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def load_last_analysis() -> dict | None:
+    """Return the last full analysis, or None if not available."""
+    if not LAST_ANALYSIS_FILE.exists():
+        return None
+    try:
+        return json.loads(LAST_ANALYSIS_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None

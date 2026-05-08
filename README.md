@@ -1,6 +1,6 @@
-# UTC — Understand Terms and Conditions
+# TermLens
 
-A local AI-powered tool that converts legal T&C documents into plain-English summaries and side-by-side company comparisons.
+A local AI-powered tool that converts legal Terms and Conditions documents into plain-English summaries and side-by-side company comparisons.
 
 ---
 

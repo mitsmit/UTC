@@ -12,7 +12,7 @@ import preprocessor
 from comparison_schemas import CompareRequest, ComparisonResult
 from schemas import AnalyzeResponse, HistoryEntry
 
-app = FastAPI(title="T&C Analyzer API", version="1.0.0")
+app = FastAPI(title="TermLens API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,

@@ -15,9 +15,9 @@ OVERALL_BORDER = {"red": "#e53935", "yellow": "#f9a825", "green": "#43a047"}
 SCORE_COLOR = {"Aggressive": "#e53935", "Mixed": "#f9a825",
                "Fair": "#1976d2", "User-friendly": "#43a047"}
 
-st.set_page_config(page_title="T&C Analyzer", page_icon="📋", layout="wide")
+st.set_page_config(page_title="TermLens", page_icon="🔍", layout="wide")
 
-st.title("📋 Terms & Conditions Analyzer")
+st.title("🔍 TermLens")
 st.caption(
     "Paste, upload, or link a T&C document — get a plain-English breakdown "
     "or compare up to 3 companies side by side."

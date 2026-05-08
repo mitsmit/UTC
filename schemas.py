@@ -25,6 +25,24 @@ class AnalysisResult(BaseModel):
     unusual_clauses: list[Clause]
 
 
+class ClauseCounts(BaseModel):
+    rights_given_up: int
+    obligations: int
+    benefits: int
+    unusual_clauses: int
+
+
+class HistoryEntry(BaseModel):
+    id: str
+    timestamp: str
+    input_type: str        # "url" | "pdf" | "text"
+    input_label: str
+    source: str
+    overall_risk: RiskLevel
+    tldr: str
+    counts: ClauseCounts
+
+
 class AnalyzeRequest(BaseModel):
     text: str | None = None
     url: str | None = None

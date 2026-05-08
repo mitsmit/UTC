@@ -7,9 +7,10 @@ import aggregator
 import analyzer
 import comparator
 import extractor
+import history
 import preprocessor
 from comparison_schemas import CompareRequest, ComparisonResult
-from schemas import AnalyzeResponse
+from schemas import AnalyzeResponse, HistoryEntry
 
 app = FastAPI(title="T&C Analyzer API", version="1.0.0")
 
@@ -21,7 +22,12 @@ app.add_middleware(
 )
 
 
-def _run_pipeline(text: str, source: str) -> AnalyzeResponse:
+def _run_pipeline(
+    text: str,
+    source: str,
+    input_type: str = "text",
+    input_label: str = "",
+) -> AnalyzeResponse:
     if not preprocessor.validate(text):
         raise HTTPException(
             status_code=422,
@@ -31,6 +37,12 @@ def _run_pipeline(text: str, source: str) -> AnalyzeResponse:
     chunks = preprocessor.chunk(text)
     raw_clauses = analyzer.analyze_chunks(chunks)
     result = aggregator.aggregate(raw_clauses, source=source)
+
+    history.save(
+        input_type=input_type,
+        input_label=input_label or source,
+        result=result.model_dump(),
+    )
 
     return AnalyzeResponse(
         result=result,
@@ -44,7 +56,8 @@ def analyze_text(text: str = Form(...)) -> AnalyzeResponse:
     extracted = extractor.extract_from_text(text)
     if len(extracted) < 100:
         raise HTTPException(status_code=400, detail="Text is too short to analyze.")
-    return _run_pipeline(extracted, source="Pasted text")
+    label = extracted[:80].replace("\n", " ") + "…"
+    return _run_pipeline(extracted, source="Pasted text", input_type="text", input_label=label)
 
 
 @app.post("/analyze/pdf", response_model=AnalyzeResponse)
@@ -56,7 +69,8 @@ async def analyze_pdf(file: UploadFile = File(...)) -> AnalyzeResponse:
         extracted = extractor.extract_from_pdf(file_bytes)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    return _run_pipeline(extracted, source=file.filename)
+    return _run_pipeline(extracted, source=file.filename, input_type="pdf",
+                         input_label=file.filename)
 
 
 @app.post("/analyze/url", response_model=AnalyzeResponse)
@@ -65,7 +79,7 @@ def analyze_url(url: str = Form(...)) -> AnalyzeResponse:
         extracted = extractor.extract_from_url(url)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    return _run_pipeline(extracted, source=url)
+    return _run_pipeline(extracted, source=url, input_type="url", input_label=url)
 
 
 @app.post("/extract/pdf")
@@ -112,6 +126,24 @@ def compare(req: CompareRequest) -> ComparisonResult:
         results[name] = comparator.analyze_company(name, text)
 
     return comparator.compare(results)
+
+
+@app.get("/history", response_model=list[HistoryEntry])
+def get_history() -> list[HistoryEntry]:
+    return history.load()
+
+
+@app.delete("/history/{entry_id}")
+def delete_entry(entry_id: str) -> dict:
+    if not history.delete(entry_id):
+        raise HTTPException(status_code=404, detail="Entry not found.")
+    return {"deleted": entry_id}
+
+
+@app.delete("/history")
+def clear_history() -> dict:
+    count = history.clear()
+    return {"cleared": count}
 
 
 @app.get("/health")

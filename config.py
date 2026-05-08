@@ -16,6 +16,7 @@ CHUNK_OVERLAP = 200
 TC_CONFIDENCE_THRESHOLD = 0.6
 
 API_HOST = "0.0.0.0"
-API_PORT = 8001          # 8000 is used by personal-agent
+API_PORT = 8002          # 8000 is used by personal-agent
+
 
 REQUEST_TIMEOUT = 20     # seconds for URL fetching

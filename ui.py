@@ -5,7 +5,8 @@ import json
 import httpx
 import streamlit as st
 
-API_BASE = "http://localhost:8001"
+API_BASE = "http://localhost:8002"
+
 
 RISK_COLOR  = {"red": "🔴", "yellow": "🟡", "green": "🟢"}
 RISK_LABEL  = {"red": "High risk", "yellow": "Moderate", "green": "User-friendly"}

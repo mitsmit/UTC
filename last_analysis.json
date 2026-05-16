@@ -1,0 +1,635 @@
+{
+  "result": {
+    "source": "https://www.linkedin.com/legal/privacy-policy/?lipi=urn%3Ali%3Apage%3Ad_flagship3_feed%3BOSniEoQ4TvCt9ZcI3ynbnQ%3D%3D",
+    "tldr": "By using the services, you agree to data sharing for ad targeting, auto-renewal of terms, arbitration for disputes, and waive liability claims, while the company may change the Privacy Policy without objection, collect and use your calendar data, and does not guarantee data security, with no immediate data deletion upon account closure.",
+    "overall_risk": "red",
+    "rights_given_up": [
+      {
+        "summary": "Users give up the right to object to changes in the Privacy Policy by continuing to use the services.",
+        "risk": "red",
+        "unusual": false,
+        "citation": "You acknowledge that your continued use of our Services after we publish or send a notice about our changes to this Privacy Policy means that the collection, use and sharing of your personal data is subject to the updated Privacy Policy, as of its effective date.",
+        "data_topic": "consent",
+        "data_types": [],
+        "purposes": [],
+        "actors": [
+          "LinkedIn"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": "implied",
+        "monetization_signal": false
+      },
+      {
+        "summary": "You allow the company to collect and use your calendar data if you sync it with their services.",
+        "risk": "red",
+        "unusual": false,
+        "citation": "If you sync your calendars with our Services, we will collect your calendar meeting information to keep growing your network...",
+        "data_topic": "collection",
+        "data_types": [
+          "calendar meeting information"
+        ],
+        "purposes": [
+          "network growth",
+          "suggesting connections"
+        ],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": "opt-in",
+        "monetization_signal": false
+      },
+      {
+        "summary": "The company uses cookies and similar technologies to collect data for ad targeting.",
+        "risk": "red",
+        "unusual": false,
+        "citation": "We use cookies and similar technologies (e.g., pixels and ad tags) to collect data (e.g., device IDs) to recognize you and your device(s)...",
+        "data_topic": "collection",
+        "data_types": [
+          "device IDs",
+          "ad ID",
+          "IP address",
+          "operating system",
+          "browser information"
+        ],
+        "purposes": [
+          "ad targeting"
+        ],
+        "actors": [
+          "the company",
+          "Microsoft"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": "opt-out",
+        "monetization_signal": true
+      },
+      {
+        "summary": "Users cannot opt out of receiving service messages, including security and legal notices.",
+        "risk": "red",
+        "unusual": false,
+        "citation": "Please be aware that you cannot opt out of receiving service messages from us, including security and legal notices.",
+        "data_topic": "consent",
+        "data_types": [],
+        "purposes": [
+          "service communication"
+        ],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": "none",
+        "monetization_signal": false
+      },
+      {
+        "summary": "The user gives up the right to have all their data deleted immediately upon account closure.",
+        "risk": "red",
+        "unusual": false,
+        "citation": "We keep some of your data even after you close your account.",
+        "data_topic": "retention",
+        "data_types": [],
+        "purposes": [
+          "legal compliance",
+          "security",
+          "fraud prevention"
+        ],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [],
+        "retention_duration": "30 days after account closure",
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "The company does not guarantee the security of user data against breaches.",
+        "risk": "red",
+        "unusual": false,
+        "citation": "However, we cannot warrant the security of any information that you send us.",
+        "data_topic": "security",
+        "data_types": [],
+        "purposes": [],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [
+          "warranty disclaimer"
+        ],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "The company collects data about your visits and interactions with their services.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "We log usage data when you visit or otherwise use our Services, including our sites, app and platform technology...",
+        "data_topic": "collection",
+        "data_types": [
+          "usage data",
+          "device information",
+          "IP addresses"
+        ],
+        "purposes": [],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": "implied",
+        "monetization_signal": false
+      },
+      {
+        "summary": "The company collects data about your communications through their services.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "We collect information about you when you communicate with others through our Services...",
+        "data_topic": "collection",
+        "data_types": [
+          "communication data"
+        ],
+        "purposes": [],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": "implied",
+        "monetization_signal": false
+      },
+      {
+        "summary": "User data may be transferred across borders to countries with different laws.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "We store and use your data outside your country.",
+        "data_topic": "transfers",
+        "data_types": [],
+        "purposes": [],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      }
+    ],
+    "obligations": [
+      {
+        "summary": "Data may be shared when required by law or to protect rights and safety.",
+        "risk": "red",
+        "unusual": false,
+        "citation": "It is possible that we will need to disclose information about you when required by law, subpoena, or other legal process or if we have a good faith belief that disclosure is reasonably necessary...",
+        "data_topic": "sharing",
+        "data_types": [],
+        "purposes": [
+          "legal compliance"
+        ],
+        "actors": [
+          "government agencies"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "Users must review changes to the Privacy Policy and can close their account if they object.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "If you object to any changes, you may close your account.",
+        "data_topic": null,
+        "data_types": [],
+        "purposes": [],
+        "actors": [],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "You must provide personal data to create an account.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "To create an account you need to provide data including your name, email address and/or mobile number, general location (e.g., city), and a password.",
+        "data_topic": "collection",
+        "data_types": [
+          "name",
+          "email address",
+          "mobile number",
+          "general location",
+          "password"
+        ],
+        "purposes": [],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "The company uses personal data to improve and personalize services and develop AI models.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "We may use your personal data to improve, develop, and provide products and Services, develop and train artificial intelligence (AI) models...",
+        "data_topic": "processing",
+        "data_types": [],
+        "purposes": [
+          "service improvement",
+          "AI model training"
+        ],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "The company uses data to serve tailored ads and measure ad performance.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "We serve you tailored ads both on and off our Services. We target (and measure the performance of) ads...",
+        "data_topic": "monetization",
+        "data_types": [
+          "profile",
+          "contact information",
+          "title",
+          "industry",
+          "search history"
+        ],
+        "purposes": [
+          "advertising",
+          "ad performance measurement"
+        ],
+        "actors": [
+          "advertising partners",
+          "vendors",
+          "publishers"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": "opt-out",
+        "monetization_signal": true
+      },
+      {
+        "summary": "Your profile and content can be seen by others based on your settings.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "Any data that you include on your profile and any content you post or social action (e.g., likes, follows, comments, shares) you take on our Services will be seen by others, consistent with your settings.",
+        "data_topic": "sharing",
+        "data_types": [],
+        "purposes": [],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "Your employer can see how you use services they provided for work.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "Your employer can see how you use Services they provided for your work (e.g. as a recruiter or sales agent) and related information.",
+        "data_topic": "sharing",
+        "data_types": [],
+        "purposes": [],
+        "actors": [
+          "employer"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "Your employer can review and manage your use of enterprise services.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "Your employer may offer you access to our enterprise Services such as Recruiter, Sales Navigator, LinkedIn Learning or our advertising Campaign Manager. Your employer can review and manage your use of such enterprise Services.",
+        "data_topic": "sharing",
+        "data_types": [],
+        "purposes": [],
+        "actors": [
+          "employer"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "Some members need to archive communications for compliance.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "Some Members (or their employers) need, for legal or professional compliance, to archive their communications and social media activity, and will use services of others to provide these archival services.",
+        "data_topic": "sharing",
+        "data_types": [],
+        "purposes": [
+          "legal compliance"
+        ],
+        "actors": [
+          "employers",
+          "archival service providers"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "You can link your account with other services, sharing personal data.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "When you opt to link your account with other services, personal data (e.g., your name, title, and company) will become available to them.",
+        "data_topic": "sharing",
+        "data_types": [
+          "name",
+          "title",
+          "company"
+        ],
+        "purposes": [],
+        "actors": [
+          "third-party services"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": "opt-in",
+        "monetization_signal": false
+      },
+      {
+        "summary": "Your data is shared across LinkedIn services and affiliates.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "We will share your personal data with our Affiliates to provide and develop our Services.",
+        "data_topic": "sharing",
+        "data_types": [],
+        "purposes": [
+          "service improvement"
+        ],
+        "actors": [
+          "Affiliates",
+          "Microsoft"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "Service providers have access to your information to help provide services.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "We use others to help us provide our Services (e.g., maintenance, analysis, audit, payments, fraud detection, customer support, marketing and development).",
+        "data_topic": "sharing",
+        "data_types": [],
+        "purposes": [
+          "service improvement"
+        ],
+        "actors": [
+          "service providers"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "Data may be shared in the event of a business sale or merger.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "We can also share your personal data as part of a sale, merger or change in control, or in preparation for any of these events.",
+        "data_topic": "sharing",
+        "data_types": [],
+        "purposes": [],
+        "actors": [
+          "new business entity"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "The company retains personal data as long as the user's account is open or as needed to provide services.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "We generally retain your personal data as long as you keep your account open or as needed to provide you Services.",
+        "data_topic": "retention",
+        "data_types": [],
+        "purposes": [
+          "service provision"
+        ],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [],
+        "retention_duration": "as long as account is open",
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "The company monitors for security breaches and encourages users to use available security features.",
+        "risk": "yellow",
+        "unusual": false,
+        "citation": "We monitor for and try to prevent security breaches. Please use the security features available through our Services.",
+        "data_topic": "security",
+        "data_types": [],
+        "purposes": [
+          "security"
+        ],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "Users can withdraw consent for data processing at any time.",
+        "risk": "green",
+        "unusual": false,
+        "citation": "At any time, you can withdraw consent you have provided by going to settings.",
+        "data_topic": "consent",
+        "data_types": [],
+        "purposes": [
+          "consent management"
+        ],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": "opt-in",
+        "monetization_signal": false
+      },
+      {
+        "summary": "Users have the right to contact the Data Protection Officer for complaints.",
+        "risk": "green",
+        "unusual": false,
+        "citation": "Residents in the Designated Countries and other regions may also have the right to contact our Data Protection Officer here.",
+        "data_topic": null,
+        "data_types": [],
+        "purposes": [
+          "complaint resolution"
+        ],
+        "actors": [
+          "Data Protection Officer"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      }
+    ],
+    "benefits": [
+      {
+        "summary": "Users have choices about the data collected, used, and shared.",
+        "risk": "green",
+        "unusual": false,
+        "citation": "We offer our users choices about the data we collect, use and share as described in this Privacy Policy, Cookie Policy, Settings and our Help Center.",
+        "data_topic": "consent",
+        "data_types": [],
+        "purposes": [],
+        "actors": [],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": "opt-out",
+        "monetization_signal": false
+      },
+      {
+        "summary": "Users can connect with others and find professional opportunities through the services.",
+        "risk": "green",
+        "unusual": false,
+        "citation": "Our Services help you connect with others, find and be found for work and business opportunities...",
+        "data_topic": null,
+        "data_types": [],
+        "purposes": [
+          "networking",
+          "career opportunities"
+        ],
+        "actors": [],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "Users can access, delete, or correct their personal data and control its use.",
+        "risk": "green",
+        "unusual": false,
+        "citation": "You can access or delete your personal data. You have many choices about how your data is collected, used and shared.",
+        "data_topic": "consent",
+        "data_types": [],
+        "purposes": [
+          "data management"
+        ],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": "opt-out",
+        "monetization_signal": false
+      },
+      {
+        "summary": "The company does not share personal data with third parties for direct marketing without permission.",
+        "risk": "green",
+        "unusual": false,
+        "citation": "We currently do not share personal data with third parties for their direct marketing purposes without your permission.",
+        "data_topic": "sharing",
+        "data_types": [],
+        "purposes": [
+          "direct marketing"
+        ],
+        "actors": [
+          "third parties"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": "opt-in",
+        "monetization_signal": false
+      }
+    ],
+    "unusual_clauses": [
+      {
+        "summary": "The company may collect new types of data as they introduce new features.",
+        "risk": "red",
+        "unusual": true,
+        "citation": "Our Services are dynamic, and we often introduce new features, which may require the collection of new information.",
+        "data_topic": null,
+        "data_types": [],
+        "purposes": [],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": "none",
+        "monetization_signal": false
+      },
+      {
+        "summary": "LinkedIn can modify the Privacy Policy and notify users through services or other means.",
+        "risk": "yellow",
+        "unusual": true,
+        "citation": "LinkedIn (“we” or “us”) can modify this Privacy Policy, and if we make material changes to it, we will provide notice through our Services, or by other means, to provide you the opportunity to review the changes before they become effective.",
+        "data_topic": null,
+        "data_types": [],
+        "purposes": [],
+        "actors": [
+          "LinkedIn"
+        ],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "The company uses data to generate insights that do not identify users.",
+        "risk": "yellow",
+        "unusual": true,
+        "citation": "We use your data to perform analytics to produce and share insights that do not identify you.",
+        "data_topic": null,
+        "data_types": [],
+        "purposes": [
+          "analytics",
+          "insight generation"
+        ],
+        "actors": [],
+        "legal_constructs": [],
+        "retention_duration": null,
+        "consent_mechanism": null,
+        "monetization_signal": false
+      },
+      {
+        "summary": "The company retains depersonalized information after account closure.",
+        "risk": "yellow",
+        "unusual": true,
+        "citation": "We will retain de-personalized information after your account has been closed.",
+        "data_topic": "retention",
+        "data_types": [],
+        "purposes": [
+          "service improvement"
+        ],
+        "actors": [
+          "the company"
+        ],
+        "legal_constructs": [],
+        "retention_duration": "indefinitely",
+        "consent_mechanism": null,
+        "monetization_signal": false
+      }
+    ]
+  },
+  "char_count": 42629,
+  "chunk_count": 6
+}

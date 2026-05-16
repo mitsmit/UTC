@@ -62,6 +62,14 @@ st.markdown("""
       text-align: center; padding: 18px 10px;
       border-radius: 10px; border: 2px solid;
   }
+  /* data topic pill */
+  .data-tag {
+      display: inline-block;
+      font-size: 0.68em; font-weight: 700; letter-spacing: 0.04em;
+      padding: 2px 7px; border-radius: 10px; margin-left: 7px;
+      background: #e3f2fd; color: #0d47a1;
+      vertical-align: middle; text-transform: uppercase;
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -85,6 +93,23 @@ if "_last_analysis" not in st.session_state:
     except Exception:
         pass  # API not running yet — user will analyze manually
 
+
+_DATA_TOPIC_ICON = {
+    # Data & privacy
+    "collection":  "📥",
+    "processing":  "⚙️",
+    "sharing":     "🔗",
+    "retention":   "🗓",
+    "transfers":   "🌍",
+    "third_party": "🤝",
+    # Legal & commercial
+    "liability":    "⚖️",
+    "arbitration":  "🔨",
+    "security":     "🔒",
+    "ai_training":  "🤖",
+    "monetization": "💰",
+    "consent":      "✅",
+}
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SHARED HELPERS
@@ -123,6 +148,66 @@ def render_section(title: str, risk_key: str, clauses: list[dict]) -> None:
             "vertical-align:middle'>⚠ Unusual</span>"
             if c.get("unusual") else ""
         )
+        dt = c.get("data_topic")
+        data_tag = (
+            f"<span class='data-tag'>"
+            f"{_DATA_TOPIC_ICON.get(dt, '🔒')} {dt.replace('_', ' ')}"
+            f"</span>"
+            if dt else ""
+        )
+
+        # ── entity chips ─────────────────────────────────────────────────────
+        def _chips(items: list, color: str) -> str:
+            return "".join(
+                f"<span style='display:inline-block;background:{color};border-radius:10px;"
+                f"padding:1px 8px;font-size:0.7em;margin:2px 3px 2px 0;"
+                f"color:#333;white-space:nowrap'>{v}</span>"
+                for v in items
+            )
+
+        entity_rows = []
+        if c.get("data_types"):
+            entity_rows.append(f"<span style='font-size:0.7em;color:#666;font-weight:600'>Data:</span> "
+                               f"{_chips(c['data_types'], '#e3f2fd')}")
+        if c.get("purposes"):
+            entity_rows.append(f"<span style='font-size:0.7em;color:#666;font-weight:600'>Purpose:</span> "
+                               f"{_chips(c['purposes'], '#e8f5e9')}")
+        if c.get("actors"):
+            entity_rows.append(f"<span style='font-size:0.7em;color:#666;font-weight:600'>Actors:</span> "
+                               f"{_chips(c['actors'], '#f3e5f5')}")
+        if c.get("legal_constructs"):
+            entity_rows.append(f"<span style='font-size:0.7em;color:#666;font-weight:600'>Legal:</span> "
+                               f"{_chips(c['legal_constructs'], '#fff3e0')}")
+        if c.get("retention_duration"):
+            entity_rows.append(
+                f"<span style='font-size:0.7em;color:#666;font-weight:600'>Retention:</span> "
+                f"<span style='display:inline-block;background:#fce4ec;border-radius:10px;"
+                f"padding:1px 8px;font-size:0.7em;color:#333'>"
+                f"🗓 {c['retention_duration']}</span>"
+            )
+        if c.get("consent_mechanism"):
+            consent_color = {"opt-in": "#e8f5e9", "opt-out": "#fdecea",
+                             "implied": "#fff8e1", "none": "#f5f5f5"}.get(
+                c["consent_mechanism"], "#f5f5f5")
+            entity_rows.append(
+                f"<span style='font-size:0.7em;color:#666;font-weight:600'>Consent:</span> "
+                f"<span style='display:inline-block;background:{consent_color};border-radius:10px;"
+                f"padding:1px 8px;font-size:0.7em;color:#333'>"
+                f"✅ {c['consent_mechanism']}</span>"
+            )
+        if c.get("monetization_signal"):
+            entity_rows.append(
+                "<span style='display:inline-block;background:#fdecea;border-radius:10px;"
+                "padding:1px 8px;font-size:0.7em;color:#b71c1c;font-weight:700'>"
+                "💰 Monetization signal</span>"
+            )
+
+        entities_html = (
+            f"<div style='margin-top:6px;line-height:2'>"
+            + "<br>".join(entity_rows)
+            + "</div>"
+        ) if entity_rows else ""
+
         citation_html = ""
         if c.get("citation"):
             escaped = (c["citation"]
@@ -142,7 +227,8 @@ def render_section(title: str, risk_key: str, clauses: list[dict]) -> None:
             f"<div style='background:{r['bg']};border-left:3px solid {r['border']};"
             f"border-radius:0 5px 5px 0;padding:9px 12px;margin-bottom:7px;'>"
             f"<div style='font-size:0.88em;font-weight:500;color:#212529;line-height:1.45'>"
-            f"{c['summary']}{unusual}</div>"
+            f"{c['summary']}{unusual}{data_tag}</div>"
+            f"{entities_html}"
             f"{citation_html}"
             f"</div>"
         )

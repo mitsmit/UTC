@@ -22,7 +22,10 @@ def _load_raw() -> list[dict]:
 
 
 def _save_raw(entries: list[dict]) -> None:
-    HISTORY_FILE.write_text(json.dumps(entries, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        HISTORY_FILE.write_text(json.dumps(entries, indent=2, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass   # read-only filesystem (e.g. Vercel serverless) — silently skip
 
 
 def save(
@@ -76,9 +79,12 @@ def clear() -> int:
 
 def save_last_analysis(data: dict) -> None:
     """Persist the full AnalyzeResponse dict so the UI can pre-load it on startup."""
-    LAST_ANALYSIS_FILE.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    try:
+        LAST_ANALYSIS_FILE.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+    except OSError:
+        pass   # read-only filesystem (e.g. Vercel serverless) — silently skip
 
 
 def load_last_analysis() -> dict | None:

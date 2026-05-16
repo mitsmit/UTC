@@ -9,10 +9,20 @@ class RiskLevel(str, Enum):
 
 
 class Clause(BaseModel):
-    summary: str
-    risk: RiskLevel
-    unusual: bool
-    citation: str
+    summary:    str
+    risk:       RiskLevel
+    unusual:    bool
+    citation:   str
+    data_topic: str | None = None   # topic tag (data/privacy or legal/commercial)
+
+    # ── Extracted entities ────────────────────────────────────────────────────
+    data_types:          list[str] = []   # email, location, biometrics, IP address…
+    purposes:            list[str] = []   # advertising, analytics, fraud prevention…
+    actors:              list[str] = []   # the company, advertisers, data brokers…
+    legal_constructs:    list[str] = []   # indemnification, force majeure, liability cap…
+    retention_duration:  str | None = None  # "90 days", "indefinitely", "until deletion"…
+    consent_mechanism:   str | None = None  # "opt-in" | "opt-out" | "implied" | "none"
+    monetization_signal: bool = False       # True if clause monetises user data
 
 
 class AnalysisResult(BaseModel):

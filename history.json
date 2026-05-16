@@ -1,0 +1,197 @@
+[
+  {
+    "id": "930a4c89-99fc-45a6-a508-b09e5853623a",
+    "timestamp": "2026-05-11T09:10:44.349401+00:00",
+    "input_type": "url",
+    "input_label": "https://www.linkedin.com/legal/privacy-policy/?lipi=urn%3Ali%3Apage%3Ad_flagship3_feed%3BOSniEoQ4TvCt9ZcI3ynbnQ%3D%3D",
+    "source": "https://www.linkedin.com/legal/privacy-policy/?lipi=urn%3Ali%3Apage%3Ad_flagship",
+    "overall_risk": "red",
+    "tldr": "By using the services, you agree to data sharing for ad targeting, auto-renewal of terms, arbitration for disputes, and waive liability claims, while the company may change the Privacy Policy without objection, collect and use your calendar data, and does not guarantee data security, with no immediate data deletion upon account closure.",
+    "counts": {
+      "rights_given_up": 9,
+      "obligations": 17,
+      "benefits": 4,
+      "unusual_clauses": 4
+    }
+  },
+  {
+    "id": "c11478e6-f659-4e2a-b48d-e12ef5aa434c",
+    "timestamp": "2026-05-11T09:07:43.604236+00:00",
+    "input_type": "text",
+    "input_label": "Privacy Policy  1. DATA COLLECTION AND AI TRAINING We collect your name, email, …",
+    "source": "Pasted text",
+    "overall_risk": "red",
+    "tldr": "By agreeing, you allow the company to use your personal data for AI training and sell aggregated data to brokers, waive your right to class action lawsuits, accept limited liability to your last 12 months' payments, and acknowledge all warranties are disclaimed.",
+    "counts": {
+      "rights_given_up": 4,
+      "obligations": 3,
+      "benefits": 0,
+      "unusual_clauses": 1
+    }
+  },
+  {
+    "id": "053809a7-9af3-4497-9479-c3dd2e295632",
+    "timestamp": "2026-05-08T21:05:18.659628+00:00",
+    "input_type": "text",
+    "input_label": "Data Privacy Providing and holding personal information comes with significant r…",
+    "source": "Pasted text",
+    "overall_risk": "yellow",
+    "tldr": "By agreeing, you consent to data sharing with third parties, automatic renewal of services unless canceled, resolution of disputes through arbitration, and waiving certain liabilities.",
+    "counts": {
+      "rights_given_up": 1,
+      "obligations": 2,
+      "benefits": 0,
+      "unusual_clauses": 0
+    }
+  },
+  {
+    "id": "e87090b5-f587-45f5-b309-176e97a57c92",
+    "timestamp": "2026-05-08T21:03:29.740539+00:00",
+    "input_type": "text",
+    "input_label": "Privacy Policy  1. DATA COLLECTION We collect your name, email address, location…",
+    "source": "Pasted text",
+    "overall_risk": "red",
+    "tldr": "By agreeing, you consent to the company collecting and sharing your personal data with third parties.",
+    "counts": {
+      "rights_given_up": 5,
+      "obligations": 0,
+      "benefits": 1,
+      "unusual_clauses": 0
+    }
+  },
+  {
+    "id": "d727f2f9-4db2-4822-af70-9db9446a18b3",
+    "timestamp": "2026-05-08T16:55:10.197226+00:00",
+    "input_type": "text",
+    "input_label": "GitHub Pages Terms of Service  1. AGE REQUIREMENT You must be at least 13 years …",
+    "source": "Pasted text",
+    "overall_risk": "yellow",
+    "tldr": "By agreeing, you consent to data sharing, automatic subscription renewals, mandatory arbitration for disputes, and waive certain liabilities, while GitHub reserves the right to suspend or terminate your account for any term violations.",
+    "counts": {
+      "rights_given_up": 2,
+      "obligations": 2,
+      "benefits": 1,
+      "unusual_clauses": 0
+    }
+  },
+  {
+    "id": "2509b25f-f27a-4c58-95f3-4a9117f4e27e",
+    "timestamp": "2026-05-08T16:45:18.630783+00:00",
+    "input_type": "url",
+    "input_label": "https://www.linkedin.com/legal/privacy-policy",
+    "source": "https://www.linkedin.com/legal/privacy-policy",
+    "overall_risk": "red",
+    "tldr": "By agreeing, you allow LinkedIn to collect, use, and share your personal data, including calendar and cookie data, for purposes like AI development, with potential data sharing with linked services and legal entities, and despite safeguards, your data's security isn't guaranteed; note that some data is retained post-account closure.",
+    "counts": {
+      "rights_given_up": 15,
+      "obligations": 7,
+      "benefits": 6,
+      "unusual_clauses": 5
+    }
+  },
+  {
+    "id": "53270be3-d8f1-469a-a571-b9853515e880",
+    "timestamp": "2026-05-08T16:24:06.295422+00:00",
+    "input_type": "url",
+    "input_label": "https://www.linkedin.com/legal/privacy-policy",
+    "source": "https://www.linkedin.com/legal/privacy-policy",
+    "overall_risk": "red",
+    "tldr": "By agreeing, you allow LinkedIn to collect, use, and share your personal data for purposes like targeted advertising and AI development, with auto-renewal of services, arbitration for disputes, limited liability for LinkedIn, and retention of some data even after account closure.",
+    "counts": {
+      "rights_given_up": 16,
+      "obligations": 7,
+      "benefits": 8,
+      "unusual_clauses": 4
+    }
+  },
+  {
+    "id": "3cf9abfc-6fa3-46e7-8650-7c2e4f5ed21a",
+    "timestamp": "2026-05-08T16:04:56.679126+00:00",
+    "input_type": "url",
+    "input_label": "https://www.whatsapp.com/legal/terms-of-service#terms-of-service-our-services",
+    "source": "https://www.whatsapp.com/legal/terms-of-service#terms-of-service-our-services",
+    "overall_risk": "red",
+    "tldr": "By agreeing, you allow WhatsApp to share your data globally and with Meta, waive your right to sue or join class actions, must resolve disputes through arbitration, and acknowledge limited liability and no emergency service access.",
+    "counts": {
+      "rights_given_up": 6,
+      "obligations": 8,
+      "benefits": 2,
+      "unusual_clauses": 3
+    }
+  },
+  {
+    "id": "b3f61178-a061-4092-a22b-2d99359c9b07",
+    "timestamp": "2026-05-08T16:03:04.129564+00:00",
+    "input_type": "url",
+    "input_label": "https://signal.org/legal/",
+    "source": "https://signal.org/legal/",
+    "overall_risk": "green",
+    "tldr": "By agreeing, you consent to data sharing with third parties, automatic renewal of your subscription unless canceled, resolution of disputes through arbitration instead of court, and a waiver of liability for certain damages.",
+    "counts": {
+      "rights_given_up": 0,
+      "obligations": 0,
+      "benefits": 0,
+      "unusual_clauses": 0
+    }
+  },
+  {
+    "id": "6aec94a9-47ec-4395-92d9-f834821dc6e4",
+    "timestamp": "2026-05-08T15:10:43.597892+00:00",
+    "input_type": "text",
+    "input_label": "Short version: We use these basic terms throughout the agreement, and they have …",
+    "source": "Pasted text",
+    "overall_risk": "green",
+    "tldr": "By agreeing, you consent to data sharing with third parties, auto-renewal of services unless canceled, resolution of disputes through arbitration instead of court, and waive certain liabilities, with no high-risk clauses present.",
+    "counts": {
+      "rights_given_up": 0,
+      "obligations": 1,
+      "benefits": 0,
+      "unusual_clauses": 0
+    }
+  },
+  {
+    "id": "1f9e1e29-5876-49d9-bccb-63381fdc6251",
+    "timestamp": "2026-05-08T15:09:14.404470+00:00",
+    "input_type": "text",
+    "input_label": "GitHub Terms of Service 1. AGE REQUIREMENT You must be at least 13 years old to …",
+    "source": "Pasted text",
+    "overall_risk": "green",
+    "tldr": "By agreeing, you consent to data sharing with third parties, automatic renewal of your subscription unless canceled, resolution of disputes through arbitration instead of court, and a waiver of liability for certain damages.",
+    "counts": {
+      "rights_given_up": 0,
+      "obligations": 2,
+      "benefits": 1,
+      "unusual_clauses": 0
+    }
+  },
+  {
+    "id": "83f8f3e7-ceae-472c-8df6-2a555f1bb76f",
+    "timestamp": "2026-05-08T15:05:04.961167+00:00",
+    "input_type": "text",
+    "input_label": "Short version: We use these basic terms throughout the agreement, and they have …",
+    "source": "Pasted text",
+    "overall_risk": "yellow",
+    "tldr": "By agreeing, you consent to data sharing with third parties, automatic renewal of services unless canceled, resolution of disputes through arbitration instead of court, and waive certain liabilities, with no high-risk clauses present.",
+    "counts": {
+      "rights_given_up": 0,
+      "obligations": 1,
+      "benefits": 0,
+      "unusual_clauses": 0
+    }
+  },
+  {
+    "id": "4f80fa78-8c05-4b43-ad1b-f9e9bd2cee6b",
+    "timestamp": "2026-05-08T10:12:03.216485+00:00",
+    "input_type": "text",
+    "input_label": "Terms of Service. 1. DATA We collect your email and share with partners. 2. ARBI…",
+    "source": "Pasted text",
+    "overall_risk": "red",
+    "tldr": "By agreeing, you consent to share your email with partners and waive your right to participate in class action lawsuits.",
+    "counts": {
+      "rights_given_up": 2,
+      "obligations": 0,
+      "benefits": 1,
+      "unusual_clauses": 0
+    }
+  }
+]

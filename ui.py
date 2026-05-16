@@ -1,13 +1,20 @@
 """Streamlit UI — TermLens. Run with: streamlit run ui.py"""
 
 import json
-import time
 import threading
+import time
 
-import httpx
 import streamlit as st
 
-API_BASE = "http://localhost:8002"
+# ── Backend modules (called directly — no HTTP layer needed) ──────────────────
+import aggregator
+import analyzer
+import comparator
+from comparator import ComparisonCancelled
+import extractor
+import history
+import preprocessor
+from schemas import AnalyzeResponse
 
 # ── design tokens ─────────────────────────────────────────────────────────────
 RISK = {
@@ -31,44 +38,22 @@ st.markdown("""
 <style>
   #MainMenu, footer, header { visibility: hidden; }
   .block-container { padding-top: 1.4rem !important; padding-bottom: 2rem !important; }
-
-  /* clause item cards */
-  .clause-card {
-      border-radius: 6px;
-      padding: 11px 15px;
-      margin-bottom: 8px;
-      line-height: 1.5;
-  }
+  .clause-card { border-radius: 6px; padding: 11px 15px; margin-bottom: 8px; line-height: 1.5; }
   .clause-card .clause-text { font-size: 0.96em; font-weight: 500; }
   .unusual-tag {
       font-size: 0.73em; font-weight: 600; letter-spacing: 0.03em;
-      padding: 2px 7px; border-radius: 3px; margin-left: 8px;
-      vertical-align: middle;
+      padding: 2px 7px; border-radius: 3px; margin-left: 8px; vertical-align: middle;
   }
-  /* section headers */
   .section-title {
       font-size: 1.05em; font-weight: 700;
-      margin: 0 0 14px 0; padding-bottom: 8px;
-      border-bottom: 2px solid;
+      margin: 0 0 14px 0; padding-bottom: 8px; border-bottom: 2px solid;
   }
-  /* topic table rows */
-  .topic-row {
-      padding: 8px 4px;
-      border-bottom: 1px solid #f0f0f0;
-      font-size: 0.93em;
-  }
-  /* score card */
-  .score-card {
-      text-align: center; padding: 18px 10px;
-      border-radius: 10px; border: 2px solid;
-  }
-  /* data topic pill */
+  .topic-row { padding: 8px 4px; border-bottom: 1px solid #f0f0f0; font-size: 0.93em; }
+  .score-card { text-align: center; padding: 18px 10px; border-radius: 10px; border: 2px solid; }
   .data-tag {
-      display: inline-block;
-      font-size: 0.68em; font-weight: 700; letter-spacing: 0.04em;
+      display: inline-block; font-size: 0.68em; font-weight: 700; letter-spacing: 0.04em;
       padding: 2px 7px; border-radius: 10px; margin-left: 7px;
-      background: #e3f2fd; color: #0d47a1;
-      vertical-align: middle; text-transform: uppercase;
+      background: #e3f2fd; color: #0d47a1; vertical-align: middle; text-transform: uppercase;
   }
 </style>
 """, unsafe_allow_html=True)
@@ -84,32 +69,42 @@ for _k, _v in {
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
+# ── module-level cancel flag for comparison thread ────────────────────────────
+_cmp_cancel = threading.Event()
+
 # ── auto-load last analysis on first run ──────────────────────────────────────
 if "_last_analysis" not in st.session_state:
-    try:
-        _resp = httpx.get(f"{API_BASE}/last-analysis", timeout=3)
-        if _resp.status_code == 200:
-            st.session_state["_last_analysis"] = _resp.json()
-    except Exception:
-        pass  # API not running yet — user will analyze manually
-
+    data = history.load_last_analysis()
+    if data:
+        st.session_state["_last_analysis"] = data
 
 _DATA_TOPIC_ICON = {
-    # Data & privacy
-    "collection":  "📥",
-    "processing":  "⚙️",
-    "sharing":     "🔗",
-    "retention":   "🗓",
-    "transfers":   "🌍",
-    "third_party": "🤝",
-    # Legal & commercial
-    "liability":    "⚖️",
-    "arbitration":  "🔨",
-    "security":     "🔒",
-    "ai_training":  "🤖",
-    "monetization": "💰",
-    "consent":      "✅",
+    "collection": "📥", "processing": "⚙️", "sharing": "🔗",
+    "retention": "🗓", "transfers": "🌍", "third_party": "🤝",
+    "liability": "⚖️", "arbitration": "🔨", "security": "🔒",
+    "ai_training": "🤖", "monetization": "💰", "consent": "✅",
 }
+
+
+# ── Pipeline (replaces the FastAPI _run_pipeline) ─────────────────────────────
+
+def _run_pipeline(text: str, source: str,
+                  input_type: str = "text", input_label: str = "") -> dict:
+    if not preprocessor.validate(text):
+        raise ValueError("This does not appear to be a Terms and Conditions document.")
+    chunks     = preprocessor.chunk(text)
+    raw        = analyzer.analyze_chunks(chunks)
+    result     = aggregator.aggregate(raw, source=source)
+    result_d   = result.model_dump()
+    history.save(input_type=input_type,
+                 input_label=input_label or source,
+                 result=result_d)
+    response = AnalyzeResponse(result=result,
+                               char_count=len(text),
+                               chunk_count=len(chunks))
+    history.save_last_analysis(response.model_dump())
+    return response.model_dump()
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SHARED HELPERS
@@ -129,34 +124,26 @@ def risk_banner(risk: str, tldr: str) -> None:
 
 
 def render_section(title: str, risk_key: str, clauses: list[dict]) -> None:
-    """Render a full-HTML section card with scrollable clause list (max ~10 visible)."""
-    r = RISK[risk_key]
+    r     = RISK[risk_key]
     count = len(clauses)
     count_badge = (
         f"<span style='background:{r['border']};color:#fff;font-size:0.7em;"
         f"font-weight:700;padding:2px 8px;border-radius:10px;margin-left:8px;"
-        f"vertical-align:middle'>{count}</span>"
-        if count else ""
+        f"vertical-align:middle'>{count}</span>" if count else ""
     )
-
-    # Build all clause cards as HTML (native <details> handles citation toggle)
     items_html = ""
     for c in clauses:
         unusual = (
             "<span style='background:#fff3cd;color:#7b5800;font-size:0.7em;"
             "font-weight:700;padding:1px 7px;border-radius:3px;margin-left:7px;"
-            "vertical-align:middle'>⚠ Unusual</span>"
-            if c.get("unusual") else ""
+            "vertical-align:middle'>⚠ Unusual</span>" if c.get("unusual") else ""
         )
         dt = c.get("data_topic")
         data_tag = (
-            f"<span class='data-tag'>"
-            f"{_DATA_TOPIC_ICON.get(dt, '🔒')} {dt.replace('_', ' ')}"
-            f"</span>"
+            f"<span class='data-tag'>{_DATA_TOPIC_ICON.get(dt, '🔒')} {dt.replace('_', ' ')}</span>"
             if dt else ""
         )
 
-        # ── entity chips ─────────────────────────────────────────────────────
         def _chips(items: list, color: str) -> str:
             return "".join(
                 f"<span style='display:inline-block;background:{color};border-radius:10px;"
@@ -182,8 +169,7 @@ def render_section(title: str, risk_key: str, clauses: list[dict]) -> None:
             entity_rows.append(
                 f"<span style='font-size:0.7em;color:#666;font-weight:600'>Retention:</span> "
                 f"<span style='display:inline-block;background:#fce4ec;border-radius:10px;"
-                f"padding:1px 8px;font-size:0.7em;color:#333'>"
-                f"🗓 {c['retention_duration']}</span>"
+                f"padding:1px 8px;font-size:0.7em;color:#333'>🗓 {c['retention_duration']}</span>"
             )
         if c.get("consent_mechanism"):
             consent_color = {"opt-in": "#e8f5e9", "opt-out": "#fdecea",
@@ -192,8 +178,7 @@ def render_section(title: str, risk_key: str, clauses: list[dict]) -> None:
             entity_rows.append(
                 f"<span style='font-size:0.7em;color:#666;font-weight:600'>Consent:</span> "
                 f"<span style='display:inline-block;background:{consent_color};border-radius:10px;"
-                f"padding:1px 8px;font-size:0.7em;color:#333'>"
-                f"✅ {c['consent_mechanism']}</span>"
+                f"padding:1px 8px;font-size:0.7em;color:#333'>✅ {c['consent_mechanism']}</span>"
             )
         if c.get("monetization_signal"):
             entity_rows.append(
@@ -203,17 +188,13 @@ def render_section(title: str, risk_key: str, clauses: list[dict]) -> None:
             )
 
         entities_html = (
-            f"<div style='margin-top:6px;line-height:2'>"
-            + "<br>".join(entity_rows)
-            + "</div>"
+            f"<div style='margin-top:6px;line-height:2'>" + "<br>".join(entity_rows) + "</div>"
         ) if entity_rows else ""
 
         citation_html = ""
         if c.get("citation"):
-            escaped = (c["citation"]
-                       .replace("&", "&amp;")
-                       .replace("<", "&lt;")
-                       .replace(">", "&gt;"))
+            escaped = (c["citation"].replace("&", "&amp;")
+                       .replace("<", "&lt;").replace(">", "&gt;"))
             citation_html = (
                 f"<details style='margin-top:5px'>"
                 f"<summary style='font-size:0.74em;color:#888;cursor:pointer;"
@@ -228,9 +209,7 @@ def render_section(title: str, risk_key: str, clauses: list[dict]) -> None:
             f"border-radius:0 5px 5px 0;padding:9px 12px;margin-bottom:7px;'>"
             f"<div style='font-size:0.88em;font-weight:500;color:#212529;line-height:1.45'>"
             f"{c['summary']}{unusual}{data_tag}</div>"
-            f"{entities_html}"
-            f"{citation_html}"
-            f"</div>"
+            f"{entities_html}{citation_html}</div>"
         )
 
     if not items_html:
@@ -239,16 +218,13 @@ def render_section(title: str, risk_key: str, clauses: list[dict]) -> None:
             "None identified</div>"
         )
 
-    # ~58px per clause card → 10 clauses ≈ 580px
     st.markdown(
-        f"<div style='border:1px solid #e0e0e0;border-radius:10px;padding:16px;"
-        f"background:#fff;'>"
+        f"<div style='border:1px solid #e0e0e0;border-radius:10px;padding:16px;background:#fff;'>"
         f"<div style='font-size:0.93em;font-weight:700;color:{r['border']};"
         f"padding-bottom:10px;margin-bottom:12px;border-bottom:2px solid {r['border']}'>"
         f"{r['icon']} {title}{count_badge}</div>"
         f"<div style='max-height:580px;overflow-y:auto;padding-right:3px'>"
-        f"{items_html}"
-        f"</div></div>",
+        f"{items_html}</div></div>",
         unsafe_allow_html=True,
     )
 
@@ -293,9 +269,7 @@ with main_tab:
             ["📝 Paste Text", "📄 Upload PDF", "🔗 Enter URL"]
         )
         submitted = False
-        api_endpoint = None
-        payload = None
-        files = None
+        _action   = None   # callable set per input type
 
         with input_text:
             pasted = st.text_area("", height=220,
@@ -305,8 +279,16 @@ with main_tab:
                 if not pasted.strip():
                     st.warning("Please paste some text first.")
                 else:
-                    submitted, api_endpoint = True, f"{API_BASE}/analyze/text"
-                    payload = {"text": pasted}
+                    submitted = True
+                    _text_val = pasted
+
+                    def _action():
+                        txt   = extractor.extract_from_text(_text_val)
+                        if len(txt) < 100:
+                            raise ValueError("Text is too short to analyze.")
+                        label = txt[:80].replace("\n", " ") + "…"
+                        return _run_pipeline(txt, source="Pasted text",
+                                             input_type="text", input_label=label)
 
         with input_pdf:
             uploaded = st.file_uploader("", type=["pdf"], key="single_pdf",
@@ -315,8 +297,14 @@ with main_tab:
                 if not uploaded:
                     st.warning("Please upload a PDF file first.")
                 else:
-                    submitted, api_endpoint = True, f"{API_BASE}/analyze/pdf"
-                    files = {"file": (uploaded.name, uploaded.read(), "application/pdf")}
+                    submitted    = True
+                    _pdf_bytes   = uploaded.read()
+                    _pdf_name    = uploaded.name
+
+                    def _action():
+                        txt = extractor.extract_from_pdf(_pdf_bytes)
+                        return _run_pipeline(txt, source=_pdf_name,
+                                             input_type="pdf", input_label=_pdf_name)
 
         with input_url:
             url_input = st.text_input("", placeholder="https://example.com/terms",
@@ -325,23 +313,20 @@ with main_tab:
                 if not url_input.strip():
                     st.warning("Please enter a URL first.")
                 else:
-                    submitted, api_endpoint = True, f"{API_BASE}/analyze/url"
-                    payload = {"url": url_input.strip()}
+                    submitted = True
+                    _url_val  = url_input.strip()
 
-    if submitted and api_endpoint:
+                    def _action():
+                        txt = extractor.extract_from_url(_url_val)
+                        return _run_pipeline(txt, source=_url_val,
+                                             input_type="url", input_label=_url_val)
+
+    if submitted and _action:
         with st.spinner("Analyzing… this may take 20–40 seconds for long documents."):
             try:
-                resp = (
-                    httpx.post(api_endpoint, files=files, timeout=120)
-                    if files else
-                    httpx.post(api_endpoint, data=payload, timeout=120)
-                )
-                if resp.status_code != 200:
-                    st.error(f"Analysis failed: {resp.json().get('detail', resp.text)}")
-                    st.stop()
-                data = resp.json()
-            except httpx.ConnectError:
-                st.error("Cannot reach the API. Run: `make serve`")
+                data = _action()
+            except ValueError as e:
+                st.error(str(e))
                 st.stop()
             except Exception as e:
                 st.error(f"Unexpected error: {e}")
@@ -357,14 +342,13 @@ with main_tab:
         risk_banner(risk, result["tldr"])
         meta_pills(data["char_count"], data["chunk_count"], result["source"])
 
-        # 4 sections side by side, each scrollable
         c1, c2, c3, c4 = st.columns(4, gap="medium")
         with c1:
-            render_section("Rights You Give Up", "red",    result["rights_given_up"])
+            render_section("Rights You Give Up", "red",     result["rights_given_up"])
         with c2:
-            render_section("Your Obligations",   "yellow", result["obligations"])
+            render_section("Your Obligations",   "yellow",  result["obligations"])
         with c3:
-            render_section("Your Benefits",      "green",  result["benefits"])
+            render_section("Your Benefits",      "green",   result["benefits"])
         with c4:
             render_section("Unusual Clauses",    "unusual", result["unusual_clauses"])
 
@@ -402,15 +386,14 @@ with compare_tab:
     st.markdown("")
     company_inputs = []
     slot_cols = st.columns(st.session_state.num_companies, gap="medium")
-    labels = ["🅐 Company 1", "🅑 Company 2", "🅒 Company 3"]
+    labels    = ["🅐 Company 1", "🅑 Company 2", "🅒 Company 3"]
 
     for idx, col in enumerate(slot_cols):
         with col:
             with st.container(border=True):
                 st.markdown(
                     f"<div style='font-weight:700;font-size:1em;margin-bottom:8px'>"
-                    f"{labels[idx]}</div>",
-                    unsafe_allow_html=True,
+                    f"{labels[idx]}</div>", unsafe_allow_html=True,
                 )
                 name = st.text_input("Company name", key=f"cmp_name_{idx}",
                                      placeholder="e.g. Spotify",
@@ -432,16 +415,11 @@ with compare_tab:
                                                 label_visibility="collapsed")
                     if pdf_file:
                         with st.spinner("Extracting…"):
-                            r = httpx.post(
-                                f"{API_BASE}/extract/pdf",
-                                files={"file": (pdf_file.name, pdf_file.read(), "application/pdf")},
-                                timeout=30,
-                            )
-                            if r.status_code == 200:
-                                cmp_text = r.json()["text"]
+                            try:
+                                cmp_text = extractor.extract_from_pdf(pdf_file.read())
                                 st.success(f"✓ {len(cmp_text):,} characters extracted")
-                            else:
-                                st.error(r.json().get("detail", "Extraction failed"))
+                            except Exception as e:
+                                st.error(str(e))
                 elif mode == "URL":
                     cmp_url = st.text_input("T&C URL", key=f"cmp_url_{idx}",
                                             placeholder="https://…/terms",
@@ -451,18 +429,36 @@ with compare_tab:
 
     st.markdown("")
 
-    def _run_comparison_thread(payload: list[dict]) -> None:
+    def _run_comparison_thread(companies: list[dict]) -> None:
         try:
-            resp = httpx.post(f"{API_BASE}/compare",
-                              json={"companies": payload}, timeout=300)
-            if resp.status_code == 499:
+            results = {}
+            for entry in companies:
+                if _cmp_cancel.is_set():
+                    st.session_state.cmp_cancelled = True
+                    return
+
+                name = entry["name"].strip() or f"Company {len(results) + 1}"
+                if entry.get("url"):
+                    text = extractor.extract_from_url(entry["url"])
+                else:
+                    text = entry["text"].strip()
+
+                if not preprocessor.validate(text):
+                    st.session_state.cmp_error = f"{name}: does not appear to be a T&C document."
+                    return
+
+                results[name] = comparator.analyze_company(name, text)
+
+            if _cmp_cancel.is_set():
                 st.session_state.cmp_cancelled = True
-            elif resp.status_code != 200:
-                st.session_state.cmp_error = resp.json().get("detail", resp.text)
-            else:
-                st.session_state.cmp_result = resp.json()
-        except httpx.ConnectError:
-            st.session_state.cmp_error = "Cannot reach the API. Run: `make serve`"
+                return
+
+            st.session_state.cmp_result = comparator.compare(
+                results, is_cancelled=_cmp_cancel.is_set
+            ).model_dump()
+
+        except ComparisonCancelled:
+            st.session_state.cmp_cancelled = True
         except Exception as e:
             st.session_state.cmp_error = str(e)
         finally:
@@ -479,12 +475,9 @@ with compare_tab:
                                  type="secondary")
 
     if stop_pressed and st.session_state.cmp_running:
-        try:
-            httpx.post(f"{API_BASE}/compare/cancel", timeout=5)
-        except Exception:
-            pass
+        _cmp_cancel.set()
         st.session_state.cmp_cancelled = True
-        st.session_state.cmp_running = False
+        st.session_state.cmp_running   = False
 
     if run_compare and not st.session_state.cmp_running:
         errors = []
@@ -497,18 +490,14 @@ with compare_tab:
             for e in errors:
                 st.warning(e)
         else:
-            payload_companies = [
-                {"name": c["name"].strip(),
-                 **({"text": c["text"]} if c["text"] else {"url": c["url"]})}
-                for c in company_inputs
-            ]
+            _cmp_cancel.clear()
             st.session_state.cmp_running   = True
             st.session_state.cmp_result    = None
             st.session_state.cmp_error     = None
             st.session_state.cmp_cancelled = False
             threading.Thread(
                 target=_run_comparison_thread,
-                args=(payload_companies,), daemon=True,
+                args=(company_inputs,), daemon=True,
             ).start()
             st.rerun()
 
@@ -532,8 +521,6 @@ with compare_tab:
         winner    = cr["overall_winner"]
 
         st.markdown("---")
-
-        # ── winner banner ─────────────────────────────────────────────────────
         st.markdown(
             f"<div style='background:#e8f5e9;border-left:5px solid #43a047;"
             f"padding:16px 20px;border-radius:8px;margin-bottom:20px'>"
@@ -542,23 +529,20 @@ with compare_tab:
             f"✅ Best choice</div>"
             f"<div style='font-size:1.1em;font-weight:700;color:#1b5e20'>{winner}</div>"
             f"<div style='font-size:0.95em;color:#2e7d32;margin-top:4px'>{cr['summary']}</div>"
-            f"</div>",
-            unsafe_allow_html=True,
+            f"</div>", unsafe_allow_html=True,
         )
 
-        # ── score cards ───────────────────────────────────────────────────────
         st.markdown(
             "<div style='font-weight:700;font-size:1.05em;margin-bottom:12px'>"
-            "User-friendliness scores</div>",
-            unsafe_allow_html=True,
+            "User-friendliness scores</div>", unsafe_allow_html=True,
         )
         score_cols = st.columns(len(companies), gap="medium")
         for col, company in zip(score_cols, companies):
-            s          = scores.get(company, {})
-            score_val  = s.get("score", 0)
-            label      = s.get("label", "")
-            color      = SCORE_COLOR.get(label, "#888")
-            crown      = " 👑" if company == winner else ""
+            s         = scores.get(company, {})
+            score_val = s.get("score", 0)
+            label     = s.get("label", "")
+            color     = SCORE_COLOR.get(label, "#888")
+            crown     = " 👑" if company == winner else ""
             with col:
                 with st.container(border=True):
                     st.markdown(
@@ -568,19 +552,15 @@ with compare_tab:
                         f"<div style='font-size:0.82em;color:{color};font-weight:600'>{label}</div>"
                         f"<div style='background:#eee;border-radius:4px;margin-top:8px;height:8px'>"
                         f"<div style='width:{score_val}%;background:{color};height:8px;border-radius:4px'></div>"
-                        f"</div></div>",
-                        unsafe_allow_html=True,
+                        f"</div></div>", unsafe_allow_html=True,
                     )
 
-        # ── topic table ───────────────────────────────────────────────────────
         st.markdown("")
         with st.container(border=True):
             st.markdown(
                 "<div style='font-weight:700;font-size:1.05em;margin-bottom:14px'>"
-                "Topic-by-topic breakdown</div>",
-                unsafe_allow_html=True,
+                "Topic-by-topic breakdown</div>", unsafe_allow_html=True,
             )
-            # header row
             hcols = st.columns([2] + [2] * len(companies))
             hcols[0].markdown("**Topic**")
             for i, company in enumerate(companies):
@@ -605,8 +585,7 @@ with compare_tab:
                     text    = "🟢 Not present" if not present else f"{icon} {summary}"
                     tcols[i + 1].markdown(
                         f"<div style='background:{row_bg};padding:6px 4px;border-radius:4px;"
-                        f"font-size:0.88em'>{text}{crown}</div>",
-                        unsafe_allow_html=True,
+                        f"font-size:0.88em'>{text}{crown}</div>", unsafe_allow_html=True,
                     )
 
         st.markdown("")
@@ -621,11 +600,7 @@ with compare_tab:
 # TAB 3 — HISTORY
 # ═════════════════════════════════════════════════════════════════════════════
 with history_tab:
-    try:
-        entries = httpx.get(f"{API_BASE}/history", timeout=5).json()
-    except Exception:
-        st.error("Cannot reach the API. Run: `make serve`")
-        entries = []
+    entries = history.load()
 
     if not entries:
         with st.container(border=True):
@@ -633,15 +608,13 @@ with history_tab:
                 "<div style='text-align:center;padding:30px 0;color:#888'>"
                 "📭 No analyses recorded yet.<br/>"
                 "<span style='font-size:0.9em'>Run an analysis on the Analyze tab to get started.</span>"
-                "</div>",
-                unsafe_allow_html=True,
+                "</div>", unsafe_allow_html=True,
             )
     else:
-        # ── summary bar ───────────────────────────────────────────────────────
-        total  = len(entries)
-        n_red  = sum(1 for e in entries if e["overall_risk"] == "red")
-        n_yel  = sum(1 for e in entries if e["overall_risk"] == "yellow")
-        n_grn  = sum(1 for e in entries if e["overall_risk"] == "green")
+        total = len(entries)
+        n_red = sum(1 for e in entries if e["overall_risk"] == "red")
+        n_yel = sum(1 for e in entries if e["overall_risk"] == "yellow")
+        n_grn = sum(1 for e in entries if e["overall_risk"] == "green")
 
         with st.container(border=True):
             m1, m2, m3, m4 = st.columns(4)
@@ -652,7 +625,6 @@ with history_tab:
 
         st.markdown("")
 
-        # ── entry cards ───────────────────────────────────────────────────────
         for entry in entries:
             risk    = entry["overall_risk"]
             r       = RISK[risk]
@@ -671,23 +643,19 @@ with history_tab:
                         f"font-size:0.75em;font-weight:700;padding:2px 9px;border-radius:12px;"
                         f"text-transform:uppercase;letter-spacing:0.05em'>"
                         f"{r['icon']} {r['label']}</span>"
-                        f"</div>",
-                        unsafe_allow_html=True,
+                        f"</div>", unsafe_allow_html=True,
                     )
                 with del_col:
                     if st.button("🗑", key=f"del_{entry['id']}", help="Remove this entry"):
-                        httpx.delete(f"{API_BASE}/history/{entry['id']}", timeout=5)
+                        history.delete(entry["id"])
                         st.rerun()
 
-                # TL;DR box
                 st.markdown(
                     f"<div style='background:{r['bg']};border-left:4px solid {r['border']};"
                     f"padding:10px 14px;border-radius:0 6px 6px 0;margin-bottom:10px;"
-                    f"font-size:0.93em'>{entry['tldr']}</div>",
-                    unsafe_allow_html=True,
+                    f"font-size:0.93em'>{entry['tldr']}</div>", unsafe_allow_html=True,
                 )
 
-                # counts + meta in one row
                 cnt_col, meta_col = st.columns([3, 2])
                 with cnt_col:
                     st.markdown(
@@ -704,13 +672,12 @@ with history_tab:
                         f"<span style='background:#fff3e0;color:#e65100;padding:3px 10px;"
                         f"border-radius:12px;font-size:0.8em;font-weight:600'>"
                         f"⚠️ Unusual: {counts['unusual_clauses']}</span>"
-                        f"</div>",
-                        unsafe_allow_html=True,
+                        f"</div>", unsafe_allow_html=True,
                     )
                 with meta_col:
                     st.caption(f"🕐 {ts} UTC · {entry['source']}")
 
         st.markdown("")
         if st.button("🗑  Clear all history", type="secondary"):
-            httpx.delete(f"{API_BASE}/history", timeout=5)
+            history.clear()
             st.rerun()

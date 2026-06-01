@@ -15,6 +15,9 @@ import extractor
 import history
 import preprocessor
 from schemas import AnalyzeResponse
+from rag import graph as rag_graph
+from rag import store as rag_store
+from rag.ingest import REGULATIONS as RAG_REGULATIONS
 
 # ── design tokens ─────────────────────────────────────────────────────────────
 RISK = {
@@ -60,17 +63,27 @@ st.markdown("""
 
 # ── session state defaults ────────────────────────────────────────────────────
 for _k, _v in {
-    "cmp_running":   False,
-    "cmp_result":    None,
-    "cmp_error":     None,
-    "cmp_cancelled": False,
-    "num_companies": 2,
+    "cmp_running":        False,
+    "cmp_result":         None,
+    "cmp_error":          None,
+    "cmp_cancelled":      False,
+    "num_companies":      2,
+    "analyze_running":    False,
+    "analyze_result":     None,
+    "analyze_error":      None,
+    "analyze_cancelled":  False,
+    "comply_running":     False,
+    "comply_result":      None,
+    "comply_error":       None,
+    "comply_cancelled":   False,
 }.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
-# ── module-level cancel flag for comparison thread ────────────────────────────
-_cmp_cancel = threading.Event()
+# ── module-level cancel flags ─────────────────────────────────────────────────
+_cmp_cancel     = threading.Event()
+_analyze_cancel = threading.Event()
+_comply_cancel  = threading.Event()
 
 # ── auto-load last analysis on first run ──────────────────────────────────────
 if "_last_analysis" not in st.session_state:
@@ -90,10 +103,18 @@ _DATA_TOPIC_ICON = {
 
 def _run_pipeline(text: str, source: str,
                   input_type: str = "text", input_label: str = "") -> dict:
+    if _analyze_cancel.is_set():
+        raise ValueError("Analysis cancelled.")
     if not preprocessor.validate(text):
         raise ValueError("This does not appear to be a Terms and Conditions document.")
+    if _analyze_cancel.is_set():
+        raise ValueError("Analysis cancelled.")
     chunks     = preprocessor.chunk(text)
+    if _analyze_cancel.is_set():
+        raise ValueError("Analysis cancelled.")
     raw        = analyzer.analyze_chunks(chunks)
+    if _analyze_cancel.is_set():
+        raise ValueError("Analysis cancelled.")
     result     = aggregator.aggregate(raw, source=source)
     result_d   = result.model_dump()
     history.save(input_type=input_type,
@@ -104,6 +125,40 @@ def _run_pipeline(text: str, source: str,
                                chunk_count=len(chunks))
     history.save_last_analysis(response.model_dump())
     return response.model_dump()
+
+
+def _run_analysis_thread(action_fn) -> None:
+    try:
+        result = action_fn()
+        if not _analyze_cancel.is_set():
+            st.session_state.analyze_result = result
+        else:
+            st.session_state.analyze_cancelled = True
+    except ValueError as e:
+        if _analyze_cancel.is_set() or "cancelled" in str(e).lower():
+            st.session_state.analyze_cancelled = True
+        else:
+            st.session_state.analyze_error = str(e)
+    except Exception as e:
+        st.session_state.analyze_error = f"Unexpected error: {e}"
+    finally:
+        st.session_state.analyze_running = False
+
+
+def _run_compliance_thread(tc_text: str, tc_source: str, regulations: list[str]) -> None:
+    try:
+        report = rag_graph.run(tc_text, tc_source, regulations)
+        if not _comply_cancel.is_set():
+            st.session_state.comply_result = report
+        else:
+            st.session_state.comply_cancelled = True
+    except Exception as e:
+        if _comply_cancel.is_set():
+            st.session_state.comply_cancelled = True
+        else:
+            st.session_state.comply_error = str(e)
+    finally:
+        st.session_state.comply_running = False
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -256,7 +311,9 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-main_tab, compare_tab, history_tab = st.tabs(["🔍 Analyze", "📊 Compare", "📜 History"])
+main_tab, compare_tab, comply_tab, history_tab = st.tabs(
+    ["🔍 Analyze", "📊 Compare", "🛡 Compliance", "📜 History"]
+)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -265,8 +322,8 @@ main_tab, compare_tab, history_tab = st.tabs(["🔍 Analyze", "📊 Compare", "�
 with main_tab:
 
     with st.container(border=True):
-        input_text, input_pdf, input_url = st.tabs(
-            ["📝 Paste Text", "📄 Upload PDF", "🔗 Enter URL"]
+        input_url, input_text, input_pdf = st.tabs(
+            ["🔗 Enter URL", "📝 Paste Text", "📄 Upload PDF"]
         )
         submitted = False
         _action   = None   # callable set per input type
@@ -321,17 +378,44 @@ with main_tab:
                         return _run_pipeline(txt, source=_url_val,
                                              input_type="url", input_label=_url_val)
 
-    if submitted and _action:
-        with st.spinner("Analyzing… this may take 20–40 seconds for long documents."):
-            try:
-                data = _action()
-            except ValueError as e:
-                st.error(str(e))
-                st.stop()
-            except Exception as e:
-                st.error(f"Unexpected error: {e}")
-                st.stop()
-        st.session_state["_last_analysis"] = data
+    if submitted and _action and not st.session_state.analyze_running:
+        _analyze_cancel.clear()
+        st.session_state.analyze_running   = True
+        st.session_state.analyze_result    = None
+        st.session_state.analyze_error     = None
+        st.session_state.analyze_cancelled = False
+        threading.Thread(
+            target=_run_analysis_thread,
+            args=(_action,), daemon=True,
+        ).start()
+        st.rerun()
+
+    if st.session_state.analyze_running:
+        info_col, stop_col = st.columns([6, 1])
+        with info_col:
+            st.info("⏳ Analyzing… this may take 20–40 seconds for long documents.")
+        with stop_col:
+            if st.button("⏹ Stop", key="btn_stop_analyze", type="secondary",
+                         use_container_width=True):
+                _analyze_cancel.set()
+                st.session_state.analyze_running   = False
+                st.session_state.analyze_cancelled = True
+                st.rerun()
+        time.sleep(2)
+        st.rerun()
+
+    if st.session_state.analyze_cancelled:
+        st.warning("⏹ Analysis stopped.")
+        st.session_state.analyze_cancelled = False
+
+    if st.session_state.analyze_error:
+        st.error(st.session_state.analyze_error)
+        st.session_state.analyze_error = None
+
+    if st.session_state.analyze_result:
+        st.session_state["_last_analysis"] = st.session_state.analyze_result
+        st.session_state.analyze_result = None
+        st.rerun()
 
     if "_last_analysis" in st.session_state:
         data   = st.session_state["_last_analysis"]
@@ -597,6 +681,208 @@ with compare_tab:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════════════
+# TAB 3 — COMPLIANCE
+# ═════════════════════════════════════════════════════════════════════════════
+
+_STATUS_STYLE = {
+    "COMPLIANT": {"bg": "#e8f5e9", "border": "#43a047", "fg": "#1b5e20", "icon": "✅"},
+    "GAP":       {"bg": "#fdecea", "border": "#e53935", "fg": "#b71c1c", "icon": "🔴"},
+    "PARTIAL":   {"bg": "#fff8e1", "border": "#f9a825", "fg": "#7b5800", "icon": "🟡"},
+    "N/A":       {"bg": "#f5f5f5", "border": "#bdbdbd", "fg": "#616161", "icon": "➖"},
+}
+_SEVERITY_COLOR = {"HIGH": "#e53935", "MEDIUM": "#f9a825", "LOW": "#66bb6a"}
+
+with comply_tab:
+    st.markdown(
+        "<div style='font-size:1.05em;font-weight:600;margin-bottom:4px'>"
+        "Check a T&amp;C for compliance with HIPAA, GDPR, and the EU AI Act</div>",
+        unsafe_allow_html=True,
+    )
+    st.caption("Paste text, upload a PDF, or enter a URL — then select which regulations to check.")
+
+    # ── ingestion status ───────────────────────────────────────────────────────
+    with st.expander("📦 Regulation index status", expanded=False):
+        try:
+            stats = rag_store.collection_stats()
+        except Exception:
+            stats = {}
+        for reg in RAG_REGULATIONS:
+            slug  = reg["slug"]
+            count = stats.get(slug, 0)
+            if count:
+                st.success(f"✅ {reg['name']} — {count:,} chunks indexed")
+            else:
+                st.warning(
+                    f"⚠️ {reg['name']} — not yet indexed. "
+                    f"Run: `python -m rag.ingest --reg {slug}`"
+                )
+
+    st.markdown("")
+
+    # ── input ──────────────────────────────────────────────────────────────────
+    with st.container(border=True):
+        cy_url, cy_text, cy_pdf = st.tabs(["🔗 Enter URL", "📝 Paste Text", "📄 Upload PDF"])
+        cy_submitted = False
+        _cy_text_val = _cy_source = None
+
+        with cy_url:
+            cy_url_val = st.text_input("", placeholder="https://example.com/terms",
+                                       key="cy_url_input", label_visibility="collapsed")
+            if st.button("Check URL", type="primary", use_container_width=True, key="cy_btn_url"):
+                if not cy_url_val.strip():
+                    st.warning("Please enter a URL.")
+                else:
+                    cy_submitted  = True
+                    _cy_text_val  = extractor.extract_from_url(cy_url_val.strip())
+                    _cy_source    = cy_url_val.strip()
+
+        with cy_text:
+            cy_pasted = st.text_area("", height=200, key="cy_paste",
+                                     placeholder="Paste full T&C text here…",
+                                     label_visibility="collapsed")
+            if st.button("Check Text", type="primary", use_container_width=True, key="cy_btn_text"):
+                if not cy_pasted.strip():
+                    st.warning("Please paste some text.")
+                else:
+                    cy_submitted = True
+                    _cy_text_val = extractor.extract_from_text(cy_pasted)
+                    _cy_source   = (_cy_text_val[:60].replace("\n", " ") + "…")
+
+        with cy_pdf:
+            cy_upload = st.file_uploader("", type=["pdf"], key="cy_pdf",
+                                         label_visibility="collapsed")
+            if st.button("Check PDF", type="primary", use_container_width=True, key="cy_btn_pdf"):
+                if not cy_upload:
+                    st.warning("Please upload a PDF.")
+                else:
+                    cy_submitted = True
+                    _cy_text_val = extractor.extract_from_pdf(cy_upload.read())
+                    _cy_source   = cy_upload.name
+
+    # ── regulation selector ────────────────────────────────────────────────────
+    st.markdown("")
+    sel_cols = st.columns(3)
+    sel_regs = []
+    for i, reg in enumerate(RAG_REGULATIONS):
+        with sel_cols[i]:
+            if st.checkbox(reg["name"], value=True, key=f"cy_sel_{reg['slug']}"):
+                sel_regs.append(reg["slug"])
+
+    # ── launch / cancel ────────────────────────────────────────────────────────
+    if cy_submitted and _cy_text_val and sel_regs and not st.session_state.comply_running:
+        _comply_cancel.clear()
+        st.session_state.comply_running   = True
+        st.session_state.comply_result    = None
+        st.session_state.comply_error     = None
+        st.session_state.comply_cancelled = False
+        threading.Thread(
+            target=_run_compliance_thread,
+            args=(_cy_text_val, _cy_source, sel_regs),
+            daemon=True,
+        ).start()
+        st.rerun()
+    elif cy_submitted and not sel_regs:
+        st.warning("Select at least one regulation.")
+
+    if st.session_state.comply_running:
+        info_col, stop_col = st.columns([6, 1])
+        with info_col:
+            st.info("⏳ Running compliance check… this may take 30–90 seconds.")
+        with stop_col:
+            if st.button("⏹ Stop", key="cy_stop", type="secondary", use_container_width=True):
+                _comply_cancel.set()
+                st.session_state.comply_running   = False
+                st.session_state.comply_cancelled = True
+                st.rerun()
+        time.sleep(2)
+        st.rerun()
+
+    if st.session_state.comply_cancelled:
+        st.warning("⏹ Compliance check stopped.")
+        st.session_state.comply_cancelled = False
+
+    if st.session_state.comply_error:
+        st.error(f"Compliance check failed: {st.session_state.comply_error}")
+        st.session_state.comply_error = None
+
+    # ── results ────────────────────────────────────────────────────────────────
+    cr = st.session_state.comply_result
+    if cr:
+        overall = cr.get("overall", "N/A")
+        os_     = _STATUS_STYLE.get(overall, _STATUS_STYLE["N/A"])
+
+        st.markdown("---")
+        st.markdown(
+            f"<div style='background:{os_['bg']};border-left:5px solid {os_['border']};"
+            f"padding:16px 20px;border-radius:8px;margin-bottom:20px'>"
+            f"<div style='font-size:0.82em;font-weight:700;color:{os_['border']};"
+            f"text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px'>"
+            f"{os_['icon']} Overall — {overall}</div>"
+            f"<div style='font-size:1em;color:#212529'>{cr.get('summary','')}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+        for reg_result in cr.get("regulations", []):
+            slug   = reg_result.get("regulation", "")
+            status = reg_result.get("status", "N/A")
+            rs     = _STATUS_STYLE.get(status, _STATUS_STYLE["N/A"])
+            gaps   = reg_result.get("gaps", [])
+            n_gaps = sum(1 for g in gaps if g.get("status") in ("GAP", "PARTIAL"))
+
+            badge = (
+                f"<span style='background:{rs['border']};color:#fff;font-size:0.7em;"
+                f"font-weight:700;padding:2px 8px;border-radius:10px;margin-left:8px'>"
+                f"{status}</span>"
+            )
+            gap_badge = (
+                f"<span style='background:#fdecea;color:#b71c1c;font-size:0.7em;"
+                f"font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px'>"
+                f"{n_gaps} gap{'s' if n_gaps != 1 else ''}</span>"
+            ) if n_gaps else ""
+
+            with st.expander(
+                f"{rs['icon']} {slug}{badge}{gap_badge} — {reg_result.get('summary','')[:80]}",
+                expanded=(status in ("GAP", "PARTIAL")),
+            ):
+                if not gaps:
+                    st.caption("No specific gaps identified.")
+                for g in gaps:
+                    gs   = _STATUS_STYLE.get(g.get("status", "N/A"), _STATUS_STYLE["N/A"])
+                    sev  = g.get("severity", "")
+                    sev_html = (
+                        f"<span style='background:{_SEVERITY_COLOR.get(sev, '#eee')};"
+                        f"color:#fff;font-size:0.68em;font-weight:700;"
+                        f"padding:1px 7px;border-radius:3px;margin-left:6px'>{sev}</span>"
+                    ) if sev and g.get("status") in ("GAP", "PARTIAL") else ""
+
+                    st.markdown(
+                        f"<div style='background:{gs['bg']};border-left:3px solid {gs['border']};"
+                        f"border-radius:0 5px 5px 0;padding:9px 12px;margin-bottom:8px'>"
+                        f"<div style='font-size:0.8em;font-weight:700;color:{gs['border']};"
+                        f"margin-bottom:3px'>{gs['icon']} {g.get('article','')} {sev_html}</div>"
+                        f"<div style='font-size:0.87em;font-weight:600;margin-bottom:4px'>"
+                        f"{g.get('requirement','')}</div>"
+                        f"<div style='font-size:0.82em;color:#555;margin-bottom:4px'>"
+                        f"<strong>T&amp;C:</strong> {g.get('tc_clause','')}</div>"
+                        + (
+                            f"<div style='font-size:0.82em;color:#c62828'>"
+                            f"<strong>Gap:</strong> {g.get('gap_description','')}</div>"
+                            if g.get("gap_description") else ""
+                        ) +
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+
+        st.markdown("")
+        st.download_button(
+            "⬇  Download compliance report (JSON)",
+            json.dumps(cr, indent=2),
+            "compliance_report.json", "application/json",
+        )
+
+
 # TAB 3 — HISTORY
 # ═════════════════════════════════════════════════════════════════════════════
 with history_tab:

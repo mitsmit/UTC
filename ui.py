@@ -5,6 +5,7 @@ import threading
 import time
 
 import streamlit as st
+from streamlit.runtime.scriptrunner import add_script_run_ctx
 
 # ── Backend modules (called directly — no HTTP layer needed) ──────────────────
 import aggregator
@@ -384,10 +385,12 @@ with main_tab:
         st.session_state.analyze_result    = None
         st.session_state.analyze_error     = None
         st.session_state.analyze_cancelled = False
-        threading.Thread(
+        _analyze_thread = threading.Thread(
             target=_run_analysis_thread,
             args=(_action,), daemon=True,
-        ).start()
+        )
+        add_script_run_ctx(_analyze_thread)
+        _analyze_thread.start()
         st.rerun()
 
     if st.session_state.analyze_running:
@@ -579,10 +582,12 @@ with compare_tab:
             st.session_state.cmp_result    = None
             st.session_state.cmp_error     = None
             st.session_state.cmp_cancelled = False
-            threading.Thread(
+            _cmp_thread = threading.Thread(
                 target=_run_comparison_thread,
                 args=(company_inputs,), daemon=True,
-            ).start()
+            )
+            add_script_run_ctx(_cmp_thread)
+            _cmp_thread.start()
             st.rerun()
 
     if st.session_state.cmp_running:
@@ -776,11 +781,13 @@ with comply_tab:
         st.session_state.comply_result    = None
         st.session_state.comply_error     = None
         st.session_state.comply_cancelled = False
-        threading.Thread(
+        _comply_thread = threading.Thread(
             target=_run_compliance_thread,
             args=(_cy_text_val, _cy_source, sel_regs),
             daemon=True,
-        ).start()
+        )
+        add_script_run_ctx(_comply_thread)
+        _comply_thread.start()
         st.rerun()
     elif cy_submitted and not sel_regs:
         st.warning("Select at least one regulation.")

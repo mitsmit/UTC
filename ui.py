@@ -179,6 +179,34 @@ def risk_banner(risk: str, tldr: str) -> None:
     </div>""", unsafe_allow_html=True)
 
 
+def risk_card(risk: str | None, source: str | None = None) -> None:
+    """Compact overall-risk-band card, meant to sit beside an input box."""
+    if risk is None:
+        st.markdown("""
+        <div style="background:#f1f3f5;border-left:5px solid #ced4da;
+        border-radius:8px;height:140px;padding:14px 16px;
+        display:flex;align-items:center;justify-content:center;
+        text-align:center;color:#868e96;font-size:0.85em;">
+          Run an analysis to see the overall risk band here.
+        </div>""", unsafe_allow_html=True)
+        return
+    r = RISK[risk]
+    src_html = (f"<div style='font-size:0.75em;color:#868e96;margin-top:6px;"
+                f"overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>{source}</div>"
+                if source else "")
+    st.markdown(f"""
+    <div style="background:{r['bg']};border-left:5px solid {r['border']};
+    border-radius:8px;height:140px;padding:14px 16px;
+    display:flex;flex-direction:column;justify-content:center;">
+      <div style="font-size:0.78em;font-weight:700;color:{r['border']};
+      text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">
+        {r['icon']} Overall risk
+      </div>
+      <div style="font-size:1.15em;font-weight:700;color:#212529">{r['label']}</div>
+      {src_html}
+    </div>""", unsafe_allow_html=True)
+
+
 def render_section(title: str, risk_key: str, clauses: list[dict]) -> None:
     r     = RISK[risk_key]
     count = len(clauses)
@@ -330,9 +358,17 @@ with main_tab:
         _action   = None   # callable set per input type
 
         with input_text:
-            pasted = st.text_area("", height=220,
-                                  placeholder="Paste the full Terms and Conditions text here…",
-                                  label_visibility="collapsed")
+            text_col, card_col = st.columns([3, 1], gap="medium")
+            with text_col:
+                pasted = st.text_area("", height=140,
+                                      placeholder="Paste the full Terms and Conditions text here…",
+                                      label_visibility="collapsed")
+            with card_col:
+                _last = st.session_state.get("_last_analysis")
+                if _last:
+                    risk_card(_last["result"]["overall_risk"], _last["result"].get("source"))
+                else:
+                    risk_card(None)
             if st.button("Analyze Text", type="primary", use_container_width=True, key="btn_text"):
                 if not pasted.strip():
                     st.warning("Please paste some text first.")
